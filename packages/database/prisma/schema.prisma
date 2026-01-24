@@ -1,0 +1,475 @@
+// Prisma Schema for TeacherMon System
+// Based on Data Dictionary from doc_ref.pdf
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================
+// ENUMS
+// =============================================
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum Region {
+  NORTH
+  NORTHEAST
+  CENTRAL
+  SOUTH
+}
+
+enum TeacherStatus {
+  ACTIVE
+  TRANSFERRED
+  RESIGNED
+  ON_LEAVE
+}
+
+enum SchoolSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
+enum AreaType {
+  REMOTE
+  VERY_REMOTE
+  SPECIAL
+}
+
+enum VisitType {
+  LESSON_STUDY
+  COACHING
+  OBSERVATION
+  FOLLOW_UP
+}
+
+enum FocusArea {
+  CLASSROOM
+  MANAGEMENT
+  STUDENT_CARE
+  COMMUNITY
+  PEDAGOGY
+}
+
+enum AssessmentPeriod {
+  BEFORE
+  MID
+  AFTER
+}
+
+enum CompetencyLevel {
+  NEEDS_SUPPORT
+  FAIR
+  GOOD
+  EXCELLENT
+}
+
+enum PLCLevel {
+  PROVINCIAL
+  REGIONAL
+  NATIONAL
+}
+
+enum PLCRole {
+  PARTICIPANT
+  PRESENTER
+  FACILITATOR
+}
+
+enum SupportType {
+  COACHING
+  TRAINING
+  MENTORING
+  WORKSHOP
+}
+
+enum PlanStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum UserRole {
+  TEACHER
+  PRINCIPAL
+  MENTOR
+  PROJECT_MANAGER
+  ADMIN
+}
+
+enum IndicatorCode {
+  WP_1  // การออกแบบการจัดการเรียนรู้
+  WP_2  // การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ
+  WP_3  // การวัดและประเมินผล
+  ET_1  // ความเป็นครู
+  ET_2  // การจัดการชั้นเรียน
+  ET_3  // ภาวะผู้นำทางวิชาการ
+  ET_4  // การพัฒนาตนเอง
+}
+
+enum EvidenceType {
+  LESSON_PLAN      // แผนการสอน
+  TEACHING_MEDIA   // สื่อการสอน
+  ASSESSMENT       // แบบทดสอบ/การวัดผล
+  STUDENT_WORK     // ผลงานนักเรียน
+  CLASSROOM_PHOTO  // ภาพกิจกรรมในชั้นเรียน
+  REFLECTION       // บันทึกสะท้อนคิด
+  ACTION_RESEARCH  // งานวิจัยในชั้นเรียน
+  OTHER            // อื่นๆ
+}
+
+enum AIActionType {
+  JOURNAL_IMPROVE        // ปรับภาษา journal
+  JOURNAL_SUGGEST        // แนะนำคำถามสะท้อนคิด
+  PDPA_CHECK            // ตรวจ PDPA
+  MENTORING_SUMMARY     // สรุปรายงานนิเทศ
+  EVIDENCE_SUMMARY      // สรุปเนื้อหาหลักฐาน
+  EVIDENCE_TAG          // แนะนำ tag หลักฐาน
+  READINESS_EXPLAIN     // อธิบายความพร้อม
+  ASSESSMENT_DRAFT      // ร่างข้อความประเมิน
+}
+
+enum PDPARiskLevel {
+  SAFE              // ปลอดภัย
+  LOW_RISK         // เสี่ยงต่ำ
+  MEDIUM_RISK      // เสี่ยงปานกลาง
+  HIGH_RISK        // เสี่ยงสูง - ต้องแก้ไข
+}
+
+// =============================================
+// MAIN TABLES
+// =============================================
+
+model School {
+  id                  String    @id @default(uuid())
+  schoolName          String    @map("school_name")
+  province            String
+  region              Region
+  schoolSize          SchoolSize @map("school_size")
+  areaType            AreaType  @map("area_type")
+  studentTotal        Int       @map("student_total")
+  directorName        String?   @map("director_name")
+  communityContext    String?   @map("community_context") @db.Text
+  qualitySchoolFlag   Boolean   @default(false) @map("quality_school_flag")
+  
+  // Relations
+  teachers            Teacher[]
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("school_profile")
+}
+
+model Teacher {
+  id                  String    @id @default(uuid())
+  citizenId           String    @unique @map("citizen_id")
+  fullName            String    @map("full_name")
+  gender              Gender
+  birthDate           DateTime  @map("birth_date")
+  cohort              Int       // รุ่นครูรัก(ษ์)ถิ่น
+  appointmentDate     DateTime  @map("appointment_date")
+  position            String    @default("ครูผู้ช่วย")
+  major               String    // วิชาเอก
+  email               String?   @unique
+  phone               String?
+  
+  // Foreign Keys
+  schoolId            String    @map("school_id")
+  school              School    @relation(fields: [schoolId], references: [id])
+  
+  // Status
+  status              TeacherStatus @default(ACTIVE)
+  
+  // Relations
+  mentoringVisits     MentoringVisit[]
+  competencyAssessments CompetencyAssessment[]
+  reflectiveJournals  ReflectiveJournal[]
+  plcActivities       PLCActivity[]
+  developmentPlans    DevelopmentPlan[]
+  evidencePortfolios  EvidencePortfolio[]
+  user                User?
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("teacher_profile")
+}
+
+model MentoringVisit {
+  id                  String    @id @default(uuid())
+  
+  // Foreign Keys
+  teacherId           String    @map("teacher_id")
+  teacher             Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  visitDate           DateTime  @map("visit_date")
+  visitType           VisitType @map("visit_type")
+  observer            String    // ชื่อทีมหนุนเสริม
+  focusArea           FocusArea @map("focus_area")
+  
+  // Observations
+  strengths           String?   @db.Text
+  challenges          String?   @db.Text
+  suggestions         String?   @db.Text
+  followUpRequired    Boolean   @default(false) @map("follow_up_required")
+  
+  // Attachments (JSON array of file URLs)
+  attachments         Json?
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("mentoring_visit")
+}
+
+model CompetencyAssessment {
+  id                  String    @id @default(uuid())
+  
+  // Foreign Keys
+  teacherId           String    @map("teacher_id")
+  teacher             Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  assessmentPeriod    AssessmentPeriod @map("assessment_period")
+  
+  // Scores (1-5 scale)
+  pedagogyScore       Int       @map("pedagogy_score")
+  classroomScore      Int       @map("classroom_score")
+  communityScore      Int       @map("community_score")
+  professionalismScore Int      @map("professionalism_score")
+  
+  overallLevel        CompetencyLevel @map("overall_level")
+  assessor            String    // ผู้ประเมิน
+  notes               String?   @db.Text
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("competency_assessment")
+}
+
+model ReflectiveJournal {
+  id                  String    @id @default(uuid())
+  
+  // Foreign Keys
+  teacherId           String    @map("teacher_id")
+  teacher             Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  month               String    // YYYY-MM format
+  reflectionText      String    @map("reflection_text") @db.Text
+  successStory        String?   @map("success_story") @db.Text
+  difficulty          String?   @db.Text
+  supportRequest      String?   @map("support_request") @db.Text
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@unique([teacherId, month])
+  @@map("reflective_journal")
+}
+
+model PLCActivity {
+  id                  String    @id @default(uuid())
+  
+  // Foreign Keys
+  teacherId           String    @map("teacher_id")
+  teacher             Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  plcDate             DateTime  @map("plc_date")
+  plcLevel            PLCLevel  @map("plc_level")
+  topic               String
+  role                PLCRole
+  takeaway            String?   @db.Text // สิ่งที่ได้เรียนรู้
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("plc_activity")
+}
+
+model DevelopmentPlan {
+  id                  String    @id @default(uuid())
+  
+  // Foreign Keys
+  teacherId           String    @map("teacher_id")
+  teacher             Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  focusCompetency     String    @map("focus_competency") // ด้านที่ต้องพัฒนา
+  actionPlan          String    @map("action_plan") @db.Text
+  supportType         SupportType @map("support_type")
+  
+  startDate           DateTime  @map("start_date")
+  endDate             DateTime  @map("end_date")
+  progressStatus      PlanStatus @map("progress_status") @default(DRAFT)
+  progressNotes       String?   @map("progress_notes") @db.Text
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("development_plan")
+}
+
+model PolicyInsight {
+  id                  String    @id @default(uuid())
+  
+  period              Int       @default(2025) // Year
+  keyIssue            String    @map("key_issue") @db.Text
+  systemicBarrier     String?   @map("systemic_barrier") @db.Text
+  successfulPractice  String?   @map("successful_practice") @db.Text
+  policyRecommendation String?  @map("policy_recommendation") @db.Text
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("policy_insight")
+}
+
+// =============================================
+// AUTHENTICATION & USERS
+// =============================================
+
+model User {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  password            String    // Hashed password
+  role                UserRole  @default(TEACHER)
+  
+  // Optional relation to Teacher (if user is a teacher)
+  teacherId           String?   @unique @map("teacher_id")
+  teacher             Teacher?  @relation(fields: [teacherId], references: [id])
+  
+  // For other roles (Principal, Mentor, etc.)
+  fullName            String?   @map("full_name")
+  
+  isActive            Boolean   @default(true) @map("is_active")
+  lastLogin           DateTime? @map("last_login")
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// =============================================
+// AI & EVIDENCE PORTFOLIO TABLES
+// =============================================
+
+model EvidencePortfolio {
+  id                  String    @id @default(uuid())
+  
+  // Foreign Keys
+  teacherId           String    @map("teacher_id")
+  teacher             Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  // File Information
+  originalFilename    String    @map("original_filename")
+  standardFilename    String    @map("standard_filename") // AI-generated standardized name
+  fileUrl             String    @map("file_url")
+  fileSize            Int       @map("file_size") // in bytes
+  mimeType            String    @map("mime_type")
+  
+  // Evidence Classification
+  evidenceType        EvidenceType @map("evidence_type")
+  indicatorCodes      Json      @map("indicator_codes") // Array of IndicatorCode - AI suggested
+  
+  // AI-Generated Content
+  aiSummary           String?   @map("ai_summary") @db.Text // 3-5 บรรทัดสรุปเนื้อหา
+  aiKeywords          Json?     @map("ai_keywords") // Array of keywords
+  aiQualityCheck      Json?     @map("ai_quality_check") // {hasObjective: true, hasSteps: true, ...}
+  aiSuggestions       String?   @map("ai_suggestions") @db.Text // ข้อเสนอแนะปรับปรุง
+  
+  // Metadata
+  uploadedBy          String    @map("uploaded_by") // user_id
+  isVerified          Boolean   @default(false) @map("is_verified") // ตรวจสอบโดยคนแล้ว
+  verifiedBy          String?   @map("verified_by")
+  verifiedAt          DateTime? @map("verified_at")
+  
+  // PDPA Check
+  pdpaChecked         Boolean   @default(false) @map("pdpa_checked")
+  pdpaRiskLevel       PDPARiskLevel? @map("pdpa_risk_level")
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@index([teacherId])
+  @@index([evidenceType])
+  @@map("evidence_portfolio")
+}
+
+model AIActivity {
+  id                  String    @id @default(uuid())
+  
+  // User & Context
+  userId              String    @map("user_id")
+  actionType          AIActionType @map("action_type")
+  
+  // Input/Output
+  inputData           String    @map("input_data") @db.Text
+  outputData          String    @map("output_data") @db.Text
+  
+  // AI Model Info
+  modelUsed           String    @map("model_used") @default("gpt-4o-mini") // or "claude-3-haiku"
+  tokensUsed          Int?      @map("tokens_used")
+  confidenceScore     Float?    @map("confidence_score") // 0.0 - 1.0
+  
+  // Human Review
+  isReviewed          Boolean   @default(false) @map("is_reviewed")
+  reviewedBy          String?   @map("reviewed_by")
+  reviewedAt          DateTime? @map("reviewed_at")
+  reviewNotes         String?   @map("review_notes") @db.Text
+  
+  // Approval Status
+  isApproved          Boolean?  @map("is_approved") // null = pending, true = approved, false = rejected
+  
+  // Related Entity (optional)
+  relatedEntityType   String?   @map("related_entity_type") // "journal", "mentoring_visit", "evidence"
+  relatedEntityId     String?   @map("related_entity_id")
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([actionType])
+  @@index([createdAt])
+  @@map("ai_activity")
+}
+
+model PDPAAudit {
+  id                  String    @id @default(uuid())
+  
+  // Context
+  sourceType          String    @map("source_type") // "journal", "evidence", "mentoring_visit"
+  sourceId            String    @map("source_id")
+  
+  // Check Results
+  originalText        String    @map("original_text") @db.Text
+  riskLevel           PDPARiskLevel @map("risk_level")
+  violations          Json      @map("violations") // Array of {type, pattern, suggestion}
+  
+  // Sanitization
+  sanitizedText       String?   @map("sanitized_text") @db.Text
+  wasAutoFixed        Boolean   @default(false) @map("was_auto_fixed")
+  
+  // Review
+  checkedBy           String    @map("checked_by") // user_id
+  isAcknowledged      Boolean   @default(false) @map("is_acknowledged")
+  acknowledgedBy      String?   @map("acknowledged_by")
+  acknowledgedAt      DateTime? @map("acknowledged_at")
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@index([sourceType, sourceId])
+  @@index([riskLevel])
+  @@index([createdAt])
+  @@map("pdpa_audit")
+}
