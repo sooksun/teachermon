@@ -107,9 +107,9 @@ export function Combobox({
                     type="button"
                     onClick={() => handleSelect(option.value)}
                     className={cn(
-                      'relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none',
+                      'relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none text-gray-900',
                       'hover:bg-gray-100 focus:bg-gray-100',
-                      value === option.value && 'bg-primary-50 text-primary-900'
+                      value === option.value && 'bg-primary-50 text-primary-900 font-medium'
                     )}
                   >
                     <Check
@@ -118,7 +118,7 @@ export function Combobox({
                         value === option.value ? 'opacity-100' : 'opacity-0'
                       )}
                     />
-                    {option.label}
+                    <span className="truncate">{option.label}</span>
                   </button>
                 ))
               )}
