@@ -66,7 +66,7 @@ export function Combobox({
           className
         )}
       >
-        <span className={cn('truncate', !selectedOption && 'text-gray-500')}>
+        <span className={cn('truncate', selectedOption ? 'text-gray-900' : 'text-gray-500')}>
           {selectedOption ? selectedOption.label : placeholder}
         </span>
         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
