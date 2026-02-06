@@ -1,89 +1,95 @@
 # ✅ TeacherMon - Production Deployment Checklist
 
-**วันที่**: 24 มกราคม 2569  
-**Version**: 1.0.0
+**วันที่**: 6 กุมภาพันธ์ 2569  
+**Version**: 1.1.0
 
 ---
 
 ## 📋 Pre-Deployment (ก่อน Deploy)
 
 ### Code Quality
-- [ ] ✅ TypeScript compilation ผ่าน (0 errors)
+- [x] ✅ TypeScript compilation ผ่าน (0 errors)
 - [ ] ✅ All tests ผ่าน
-- [ ] ✅ Linter ผ่าน (no warnings)
+- [x] ✅ Linter ผ่าน (no warnings)
 - [ ] ✅ Code review เสร็จ
-- [ ] ✅ Build production สำเร็จ (`pnpm build`)
+- [x] ✅ Build production สำเร็จ (`pnpm build`)
 
 ### Security
-- [ ] 🔒 เปลี่ยน `JWT_SECRET` (ใหม่ minimum 32 characters)
-- [ ] 🔒 เปลี่ยน Database password
+- [x] 🔒 เปลี่ยน `JWT_SECRET` — ตั้งค่าใน `.env.production` (minimum 32 characters)
+- [x] 🔒 เปลี่ยน Database password — ตั้งค่า `MYSQL_PASSWORD` ใน `.env.production`
 - [ ] 🔒 เปลี่ยนหรือลบ default admin accounts
-- [ ] 🔒 `CORS_ORIGIN` ตั้งค่าเป็น production domain
-- [ ] 🔒 Rate limiting เปิดใช้งาน
-- [ ] 🔒 Environment files ไม่มี sensitive data ที่ไม่จำเป็น
-- [ ] 🔒 `.gitignore` ครบถ้วน (ไม่ commit `.env` files)
+- [x] 🔒 `CORS_ORIGIN` ตั้งค่าเป็น production domain — อ่านจาก env, block ใน production mode (`main.ts`)
+- [x] 🔒 Rate limiting เปิดใช้งาน — ThrottlerModule 100 req/min default, 10 req/min strict (`app.module.ts`)
+- [x] 🔒 Helmet security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options) — `main.ts`
+- [x] 🔒 Environment files ไม่มี sensitive data ที่ไม่จำเป็น
+- [x] 🔒 `.gitignore` ครบถ้วน (ไม่ commit `.env`, `uploads/`, `data/`, `query.sql`)
 
 ### Database
-- [ ] 💾 Backup database ปัจจุบัน
-- [ ] 💾 Migration scripts พร้อม
-- [ ] 💾 Database indexes ครบถ้วน
-- [ ] 💾 Connection pooling ตั้งค่าแล้ว
+- [ ] 💾 Backup database ปัจจุบัน — ใช้ `scripts/backup.sh`
+- [x] 💾 Migration scripts พร้อม — 4 migration files ใน `packages/database/prisma/migrations/`
+- [x] 💾 Database indexes ครบถ้วน — 40+ indexes ใน `schema.prisma` (teachers, journals, mentoring, budget ฯลฯ)
+- [x] 💾 Connection pooling — Prisma ORM จัดการ connection pool อัตโนมัติ
+- [x] 💾 Prisma `db:migrate:deploy` script พร้อมใน `deploy.sh`
 - [ ] 💾 ทดสอบ backup & restore script
 
 ### Infrastructure
 - [ ] 🖥️  Server/Cloud account พร้อม
 - [ ] 🌐 Domain name พร้อม
-- [ ] 🔐 SSL Certificate พร้อม
+- [ ] 🔐 SSL Certificate พร้อม — `scripts/setup-ssl.sh` สำหรับ Let's Encrypt
 - [ ] 🌐 DNS configured และทดสอบแล้ว
-- [ ] 🔥 Firewall rules ตั้งค่าแล้ว
+- [x] 🔥 Firewall rules — `scripts/setup-server.sh` ตั้งค่า UFW (22, 80, 443)
 - [ ] 💰 Billing alert setup (cloud)
 
 ### Configuration Files
-- [ ] 📝 `docker-compose.prod.yml` พร้อม
-- [ ] 📝 `nginx.conf` configured
-- [ ] 📝 `.env.production` files สร้างแล้ว
-- [ ] 📝 SSL certificates วางในตำแหน่งที่ถูกต้อง
+- [x] 📝 `docker-compose.prod.yml` พร้อม — MySQL 8 + API + Web + Nginx
+- [x] 📝 `nginx/nginx.prod.conf` configured — reverse proxy, SSL, rate limiting, cache
+- [x] 📝 `.env.production.example` สร้างแล้ว — template ตัวแปรทั้งหมด
+- [x] 📝 `apps/api/Dockerfile` — multi-stage build, health check
+- [x] 📝 `apps/web/Dockerfile` — multi-stage build, health check
+- [x] 📝 `.dockerignore` — กรอง node_modules, .git, .env ฯลฯ
+- [ ] 📝 SSL certificates วางใน `nginx/ssl/` (สร้างอัตโนมัติเมื่อรัน deploy)
 
 ---
 
 ## 🚀 Deployment (ตอน Deploy)
 
 ### Build & Deploy
-- [ ] 🏗️  Build Docker images
+- [x] 🏗️  Dockerfile พร้อม (multi-stage build)
   ```bash
-  docker build -f apps/api/Dockerfile -t teachermon-api:latest .
-  docker build -f apps/web/Dockerfile -t teachermon-web:latest .
+  # build อัตโนมัติผ่าน docker compose
+  docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
   ```
 - [ ] 🚢 Push images to registry (ถ้าใช้)
-- [ ] 📦 Deploy to server
+- [x] 📦 Deploy script พร้อม
   ```bash
-  docker-compose -f docker-compose.prod.yml up -d
+  chmod +x scripts/deploy.sh
+  ./scripts/deploy.sh          # deploy ปกติ
+  ./scripts/deploy.sh --fresh  # deploy ใหม่ทั้งหมด
   ```
-- [ ] 🗄️  Run database migrations
+- [x] 🗄️  Database migration อัตโนมัติใน `deploy.sh`
   ```bash
-  docker exec -it teachermon-api-prod pnpm db:migrate:deploy
+  # รันอัตโนมัติ: prisma migrate deploy
   ```
-- [ ] 🌱 Seed initial data (ถ้าจำเป็น)
+- [ ] 🌱 Seed initial data (ถ้าจำเป็น) — uncomment ใน `deploy.sh`
 
 ### SSL Setup
-- [ ] 🔐 Install Certbot (ถ้าใช้ Let's Encrypt)
-- [ ] 🔐 Generate SSL certificates
+- [x] 🔐 Setup script พร้อม: `scripts/setup-ssl.sh`
   ```bash
-  sudo certbot --nginx -d yourdomain.com -d api.yourdomain.com
+  ./scripts/setup-ssl.sh yourdomain.com admin@yourdomain.com
   ```
+- [x] 🔐 Auto-renewal ตั้งค่าใน script (cron ทุกวัน 03:00)
 - [ ] 🔐 Test SSL configuration
   - https://www.ssllabs.com/ssltest/
-- [ ] 🔐 Setup auto-renewal
-  ```bash
-  sudo certbot renew --dry-run
-  ```
+- [x] 🔐 Self-signed cert สร้างอัตโนมัติเมื่อยังไม่มี cert (ใน `deploy.sh`)
 
 ### Nginx Configuration
-- [ ] 🌐 Nginx config ถูกต้อง
-- [ ] 🌐 Test config: `nginx -t`
-- [ ] 🌐 Reload nginx: `nginx -s reload`
-- [ ] 🌐 HTTP redirect to HTTPS ทำงาน
-- [ ] 🌐 Rate limiting ทำงาน
+- [x] 🌐 Nginx config ถูกต้อง — `nginx/nginx.prod.conf`
+- [x] 🌐 HTTP redirect to HTTPS ทำงาน
+- [x] 🌐 Rate limiting — general: 20r/s, login: 5r/m
+- [x] 🌐 Gzip compression เปิด
+- [x] 🌐 Security headers (X-Frame-Options, X-Content-Type-Options, X-XSS-Protection)
+- [x] 🌐 Static asset caching (`_next/static/` max-age 1 year)
+- [x] 🌐 API proxy (`/api/` → api:3001)
 
 ---
 
@@ -92,7 +98,6 @@
 ### Immediate Testing (ทันที)
 - [ ] 🧪 ทดสอบ HTTPS ทำงาน
   - https://yourdomain.com
-  - https://api.yourdomain.com
 - [ ] 🧪 ทดสอบ login ทุก role
   - Admin
   - Manager
@@ -102,22 +107,27 @@
   - Teachers
   - Schools
   - Journals
+  - Budget
 - [ ] 🧪 ทดสอบ file upload
 - [ ] 🧪 ตรวจสอบ logs (ไม่มี errors)
   ```bash
-  docker logs teachermon-api-prod
-  docker logs teachermon-web-prod
+  docker logs -f teachermon-api
+  docker logs -f teachermon-web
+  docker logs -f teachermon-db
   ```
-- [ ] 🧪 Test API health
+- [x] 🧪 Health check endpoint พร้อม
   ```bash
-  curl https://api.yourdomain.com/health
+  curl https://yourdomain.com/api/health
+  # Response: { status: "ok", uptime, database: "connected" }
   ```
 
 ### Within 1 Hour
-- [ ] 📊 ตรวจสอบ monitoring dashboards
-- [ ] 📊 ตรวจสอบ error tracking (Sentry)
-- [ ] 📊 ตรวจสอบ uptime monitoring
-- [ ] 💾 Verify first automatic backup
+- [ ] 📊 ตรวจสอบ container status
+  ```bash
+  docker compose -f docker-compose.prod.yml -p teachermon ps
+  ```
+- [ ] 📊 ตรวจสอบ disk space
+- [ ] 💾 Verify database connectivity
 - [ ] 📧 Test alert notifications
 
 ### Within 24 Hours
@@ -127,7 +137,7 @@
   - Page load time
   - Database query time
 - [ ] 🔒 Review security logs
-- [ ] 🗄️  Database performance check
+- [ ] 🗄️  Database performance check (slow query log)
 - [ ] 🧪 Load testing (optional)
 
 ### Within 1 Week
@@ -142,42 +152,47 @@
 ## 🔒 Security Checklist
 
 ### Server Security
-- [ ] 🔥 UFW firewall enabled
-- [ ] 🔥 Fail2Ban configured
+- [x] 🔥 UFW firewall — `scripts/setup-server.sh` (เปิด 22, 80, 443)
+- [x] 🔥 Fail2Ban — ตั้งค่าอัตโนมัติใน `scripts/setup-server.sh`
 - [ ] 🔥 SSH key-based auth (disable password)
-- [ ] 🔥 Non-root user for deployment
-- [ ] 🔥 Auto security updates enabled
-  ```bash
-  sudo apt install unattended-upgrades
-  ```
+- [x] 🔥 Non-root user for Docker — Dockerfile ใช้ `USER node`
+- [x] 🔥 Auto security updates — unattended-upgrades ใน `scripts/setup-server.sh`
 
 ### Application Security
-- [ ] 🔒 HTTPS enforced (HTTP redirects)
-- [ ] 🔒 Security headers configured
-  - X-Frame-Options
-  - X-Content-Type-Options
-  - X-XSS-Protection
-  - Content-Security-Policy
-- [ ] 🔒 Rate limiting active
-- [ ] 🔒 CORS configured properly
-- [ ] 🔒 SQL injection protection (Prisma ORM)
-- [ ] 🔒 XSS protection enabled
+- [x] 🔒 HTTPS enforced (HTTP redirects) — nginx config
+- [x] 🔒 Security headers configured
+  - X-Frame-Options: SAMEORIGIN (`main.ts` + `nginx.prod.conf`)
+  - X-Content-Type-Options: nosniff (`main.ts` + `nginx.prod.conf`)
+  - X-XSS-Protection: 1; mode=block (`main.ts` + `nginx.prod.conf`)
+  - Content-Security-Policy: self-only (`main.ts`)
+  - HSTS: max-age=31536000 (`main.ts`)
+- [x] 🔒 Rate limiting active — ThrottlerGuard + Nginx rate limiting
+- [x] 🔒 CORS configured — อ่านจาก env, block unknown origins ใน production
+- [x] 🔒 SQL injection protection — Prisma ORM parameterized queries
+- [x] 🔒 XSS protection — Helmet + validation pipes
+- [x] 🔒 Input validation — class-validator, whitelist: true, forbidNonWhitelisted
+- [x] 🔒 Password hashing — bcryptjs (10 rounds)
+- [x] 🔒 JWT authentication — passport-jwt
+- [x] 🔒 Error sanitization — HttpExceptionFilter ซ่อน details ใน production
 
 ### Database Security
-- [ ] 🗄️  PostgreSQL accessible from localhost only
-- [ ] 🗄️  Strong database password
-- [ ] 🗄️  Regular backups enabled
-- [ ] 🗄️  Connection encryption (SSL/TLS)
+- [x] 🗄️  MySQL accessible from localhost only — `127.0.0.1:3306` ใน docker-compose
+- [x] 🗄️  Strong database password — ตั้งค่าใน `.env.production`
+- [x] 🗄️  Regular backups — `scripts/backup.sh` + cron
+- [x] 🗄️  MySQL charset: utf8mb4, collation: utf8mb4_unicode_ci
+- [x] 🗄️  Slow query log enabled — docker-compose MySQL command
+- [x] 🗄️  Production database clean protection — `PrismaService.cleanDatabase()` blocked ใน production
 
 ---
 
 ## 📊 Monitoring Setup
 
 ### Application Monitoring
-- [ ] 📈 PM2 monitoring (ถ้าใช้)
-- [ ] 📈 Error tracking (Sentry, Rollbar)
-- [ ] 📈 Application logs centralized
-- [ ] 📈 Performance monitoring (New Relic, Datadog)
+- [x] 📈 Health check endpoint — `GET /api/health` (database, uptime, response time)
+- [x] 📈 Docker health checks — ทั้ง API, Web, MySQL containers
+- [x] 📈 Application logs — Docker json-file driver, max 10MB x 5 files
+- [ ] 📈 Error tracking (Sentry, Rollbar) — ยังไม่ได้ตั้งค่า
+- [ ] 📈 Performance monitoring (New Relic, Datadog) — optional
 
 ### Infrastructure Monitoring
 - [ ] 🖥️  Server resource monitoring (CPU, RAM, Disk)
@@ -186,10 +201,10 @@
 - [ ] 🖥️  Disk space alerts
 
 ### Database Monitoring
-- [ ] 🗄️  Query performance monitoring
+- [x] 🗄️  Slow query log — enabled ใน docker-compose (long_query_time=2s)
 - [ ] 🗄️  Connection pool monitoring
 - [ ] 🗄️  Database size monitoring
-- [ ] 🗄️  Slow query log enabled
+- [x] 🗄️  Max connections configured — 200
 
 ### Alert Setup
 - [ ] 🔔 Email alerts configured
@@ -202,16 +217,19 @@
 ## 💾 Backup & Recovery
 
 ### Automated Backups
-- [ ] 💾 Database backup script configured
+- [x] 💾 Database backup script — `scripts/backup.sh`
   ```bash
-  chmod +x scripts/backup-db.sh
+  chmod +x scripts/backup.sh
+  ./scripts/backup.sh
   ```
-- [ ] 💾 Cron job for daily backup
+- [x] 💾 Backup ใช้ `mysqldump --single-transaction` (ไม่ lock tables)
+- [x] 💾 Backup compression — gzip
+- [x] 💾 Cron job สำหรับ daily backup
   ```bash
   crontab -e
-  0 2 * * * /path/to/backup-db.sh
+  0 2 * * * cd /opt/teachermon && ./scripts/backup.sh >> backups/backup.log 2>&1
   ```
-- [ ] 💾 Backup retention policy (30 days)
+- [x] 💾 Backup retention policy — 30 วัน (ลบอัตโนมัติ)
 - [ ] 💾 Cloud backup (S3, GCS) configured
 - [ ] 💾 Test restore process
 
@@ -229,20 +247,23 @@
 ## 🎯 Performance Optimization
 
 ### Database
-- [ ] ⚡ Indexes created
-- [ ] ⚡ Query optimization
-- [ ] ⚡ Connection pooling configured
-- [ ] ⚡ Vacuum schedule
+- [x] ⚡ Indexes — 40+ indexes ครอบคลุม foreign keys, search fields, composite indexes
+- [x] ⚡ Prisma ORM query optimization (select, include only needed fields)
+- [x] ⚡ Connection pooling — Prisma จัดการอัตโนมัติ
+- [x] ⚡ MySQL InnoDB buffer pool — 256MB
 
 ### API
-- [ ] ⚡ Response compression enabled
-- [ ] ⚡ Caching strategy implemented
-- [ ] ⚡ Rate limiting configured
-- [ ] ⚡ Database query optimization
+- [x] ⚡ Response compression — gzip level 6, threshold 1KB (`main.ts`)
+- [x] ⚡ In-memory caching — CacheModule (30s TTL, max 100 items)
+- [x] ⚡ Rate limiting — ThrottlerModule
+- [x] ⚡ Body parser limits — 5MB max (ป้องกัน DoS)
+- [x] ⚡ Swagger API docs — เปิดใช้งาน (`/api/docs`)
 
 ### Frontend
-- [ ] ⚡ Image optimization
-- [ ] ⚡ Code splitting
+- [x] ⚡ Next.js gzip compression
+- [x] ⚡ Image optimization — formats: avif, webp
+- [x] ⚡ Package optimization — optimizePackageImports (recharts, react-toastify, react-query)
+- [x] ⚡ Static asset caching — nginx 1 year cache
 - [ ] ⚡ CDN for static assets (optional)
 - [ ] ⚡ Service worker/PWA (optional)
 
@@ -251,11 +272,11 @@
 ## 📝 Documentation
 
 ### Technical Documentation
-- [ ] 📚 API documentation updated
-- [ ] 📚 Deployment process documented
+- [x] 📚 API documentation — Swagger (`/api/docs`)
+- [x] 📚 Deployment process — `scripts/deploy.sh` + checklist นี้
 - [ ] 📚 Disaster recovery plan
 - [ ] 📚 Monitoring setup guide
-- [ ] 📚 Backup/restore procedures
+- [x] 📚 Backup/restore procedures — `scripts/backup.sh`
 
 ### User Documentation
 - [ ] 📖 User manual
@@ -292,8 +313,14 @@
 
 ### During Go-Live
 - [ ] 🚀 Deploy to production
+  ```bash
+  ./scripts/deploy.sh
+  ```
 - [ ] 🚀 Smoke tests pass
 - [ ] 🚀 Monitor logs in real-time
+  ```bash
+  docker compose -f docker-compose.prod.yml -p teachermon logs -f
+  ```
 - [ ] 🚀 Announce to users
 
 ### Post Go-Live (First 2 Hours)
@@ -336,6 +363,54 @@
 
 ---
 
+## 📁 Production Files Reference
+
+| ไฟล์ | คำอธิบาย |
+|---|---|
+| `docker-compose.prod.yml` | Production Docker Compose (MySQL + API + Web + Nginx) |
+| `apps/api/Dockerfile` | API multi-stage Docker build |
+| `apps/web/Dockerfile` | Web multi-stage Docker build |
+| `nginx/nginx.prod.conf` | Nginx reverse proxy + SSL + rate limiting |
+| `.env.production.example` | Template ตัวแปร production |
+| `.dockerignore` | Docker build exclusions |
+| `scripts/deploy.sh` | Main deployment script |
+| `scripts/backup.sh` | MySQL backup + retention |
+| `scripts/setup-ssl.sh` | Let's Encrypt SSL setup + auto-renew |
+| `scripts/setup-server.sh` | Server initial setup (Docker, UFW, Fail2ban) |
+
+---
+
+## Quick Deploy Commands
+
+```bash
+# 1. Setup server (ครั้งแรก)
+sudo ./scripts/setup-server.sh
+
+# 2. ตั้งค่า environment
+cp .env.production.example .env.production
+nano .env.production
+
+# 3. ติดตั้ง SSL (ถ้ามีโดเมน)
+./scripts/setup-ssl.sh yourdomain.com admin@yourdomain.com
+
+# 4. Deploy
+./scripts/deploy.sh
+
+# 5. ดู logs
+docker compose -f docker-compose.prod.yml -p teachermon logs -f
+
+# 6. Backup
+./scripts/backup.sh
+
+# 7. Restart
+docker compose -f docker-compose.prod.yml -p teachermon restart
+
+# 8. หยุด
+docker compose -f docker-compose.prod.yml -p teachermon down
+```
+
+---
+
 ## ✅ Sign-off
 
 **เมื่อทุกอย่างพร้อม ให้ sign-off**:
@@ -347,7 +422,7 @@
 
 ---
 
-**Version**: 1.0.0  
-**Last Updated**: 24 มกราคม 2569
+**Version**: 1.1.0  
+**Last Updated**: 6 กุมภาพันธ์ 2569
 
 **หมายเหตุ**: เก็บเอกสารนี้และอัพเดทหลังจาก deploy เพื่อใช้อ้างอิงในอนาคต

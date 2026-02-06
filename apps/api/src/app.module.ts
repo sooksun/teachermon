@@ -20,6 +20,7 @@ import { PDPAModule } from './pdpa/pdpa.module';
 import { IndicatorsModule } from './indicators/indicators.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { BudgetModule } from './budget/budget.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { BudgetModule } from './budget/budget.module';
     IndicatorsModule,
     UploadsModule,
     BudgetModule,
+    HealthModule,
   ],
   providers: [
     {
