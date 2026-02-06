@@ -8,6 +8,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@teachermon/database": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {
