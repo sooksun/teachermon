@@ -21,6 +21,10 @@ RUN pnpm install --frozen-lockfile --prod=false
 
 # --- Stage 3: Build ---
 FROM base AS build
+
+# Dummy DATABASE_URL for prisma generate (no actual connection)
+ENV DATABASE_URL="mysql://user:pass@localhost:3306/dummy"
+
 COPY --from=dependencies /app ./
 COPY packages/database ./packages/database
 COPY packages/shared ./packages/shared
@@ -46,6 +50,7 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 
 WORKDIR /app
 ENV NODE_ENV=production
+ENV DATABASE_URL="mysql://user:pass@localhost:3306/dummy"
 
 # Copy workspace config
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -53,17 +58,15 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/database/package.json ./packages/database/
 COPY packages/shared/package.json ./packages/shared/
 
-# Install production dependencies only
+# Install production dependencies
 RUN pnpm install --frozen-lockfile --prod
 
-# Copy Prisma schema + generated client
-COPY --from=build /app/packages/database/prisma ./packages/database/prisma
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+# Copy Prisma schema and generate client in production node_modules
+COPY packages/database/prisma ./packages/database/prisma
+RUN cd packages/database && npx prisma generate
 
 # Copy built shared package
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
-COPY packages/shared/package.json ./packages/shared/
 
 # Copy built API
 COPY --from=build /app/apps/api/dist ./apps/api/dist
