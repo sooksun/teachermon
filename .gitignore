@@ -58,9 +58,9 @@ Thumbs.db
 test-ai-api.js
 query.sql
 
-# Uploaded files
-apps/api/uploads/
-uploads/
+# Uploaded files (data dirs only; do not ignore src/uploads module)
+/apps/api/uploads/
+/uploads/
 
 # Data
 data/
