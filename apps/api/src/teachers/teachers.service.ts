@@ -1,6 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@teachermon/database';
+
+function isPrismaP2002(e: unknown): e is { code: string; meta?: { target?: string[] } } {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    'code' in e &&
+    (e as { code: string }).code === 'P2002'
+  );
+}
 
 @Injectable()
 export class TeachersService {
@@ -96,6 +105,7 @@ export class TeachersService {
         },
         competencyAssessments: {
           orderBy: { createdAt: 'desc' },
+          take: 5,
         },
         reflectiveJournals: {
           orderBy: { month: 'desc' },
@@ -103,10 +113,11 @@ export class TeachersService {
         },
         plcActivities: {
           orderBy: { plcDate: 'desc' },
-          take: 10,
+          take: 5,
         },
         developmentPlans: {
           orderBy: { createdAt: 'desc' },
+          take: 5,
         },
       },
     });
@@ -119,10 +130,24 @@ export class TeachersService {
   }
 
   async create(data: Prisma.TeacherCreateInput) {
-    return this.prisma.teacher.create({
-      data,
-      include: { school: true },
-    });
+    try {
+      return await this.prisma.teacher.create({
+        data,
+        include: { school: true },
+      });
+    } catch (error) {
+      if (isPrismaP2002(error)) {
+        const target = error.meta?.target;
+        if (target?.includes('citizen_id')) {
+          throw new ConflictException('เลขบัตรประชาชนนี้มีอยู่ในระบบแล้ว กรุณาใช้เลขบัตรประชาชนอื่น');
+        }
+        if (target?.includes('email')) {
+          throw new ConflictException('อีเมลนี้มีอยู่ในระบบแล้ว กรุณาใช้อีเมลอื่น');
+        }
+        throw new ConflictException('ข้อมูลที่กรอกซ้ำกับข้อมูลที่มีอยู่ในระบบแล้ว');
+      }
+      throw error;
+    }
   }
 
   async update(id: string, data: Prisma.TeacherUpdateInput) {
@@ -131,11 +156,25 @@ export class TeachersService {
       throw new NotFoundException(`Teacher with ID ${id} not found`);
     }
 
-    return this.prisma.teacher.update({
-      where: { id },
-      data,
-      include: { school: true },
-    });
+    try {
+      return await this.prisma.teacher.update({
+        where: { id },
+        data,
+        include: { school: true },
+      });
+    } catch (error) {
+      if (isPrismaP2002(error)) {
+        const target = error.meta?.target;
+        if (target?.includes('citizen_id')) {
+          throw new ConflictException('เลขบัตรประชาชนนี้มีอยู่ในระบบแล้ว กรุณาใช้เลขบัตรประชาชนอื่น');
+        }
+        if (target?.includes('email')) {
+          throw new ConflictException('อีเมลนี้มีอยู่ในระบบแล้ว กรุณาใช้อีเมลอื่น');
+        }
+        throw new ConflictException('ข้อมูลที่กรอกซ้ำกับข้อมูลที่มีอยู่ในระบบแล้ว');
+      }
+      throw error;
+    }
   }
 
   async remove(id: string) {

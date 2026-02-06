@@ -5,14 +5,14 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('dashboard')
 @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard) // TODO: Enable after login is working
+@UseGuards(JwtAuthGuard)
 @Controller('dashboard')
 export class DashboardController {
   constructor(private dashboardService: DashboardService) {}
 
   @ApiOperation({ summary: 'Get overall statistics' })
   @Get('stats')
-  getOverallStats() {
+  getOverallStats(): Promise<any> {
     return this.dashboardService.getOverallStats();
   }
 

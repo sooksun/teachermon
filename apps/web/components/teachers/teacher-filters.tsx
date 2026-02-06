@@ -64,11 +64,11 @@ export function TeacherFilters({ filters, onFilterChange }: TeacherFiltersProps)
 
       <div className="flex items-end">
         <button
-          onClick={() =>
-            onFilterChange('search', '') ||
-            onFilterChange('region', '') ||
-            onFilterChange('status', '')
-          }
+          onClick={() => {
+            onFilterChange('search', '');
+            onFilterChange('region', '');
+            onFilterChange('status', '');
+          }}
           className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
         >
           ล้างตัวกรอง

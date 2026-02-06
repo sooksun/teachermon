@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('plc')
 @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard) // TODO: Enable after login is working
+@UseGuards(JwtAuthGuard)
 @Controller('plc')
 export class PLCController {
   constructor(private plcService: PLCService) {}

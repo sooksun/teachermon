@@ -18,8 +18,9 @@ export class GeminiAIProvider {
     const modelName = this.configService.get<string>('GEMINI_MODEL', 'gemini-2.0-flash-exp');
     this.isEnabled = this.configService.get<boolean>('AI_ENABLED', true);
 
-    if (!apiKey || apiKey === 'your-gemini-api-key-here') {
-      this.logger.warn('GEMINI_API_KEY not configured. AI features will use mock responses.');
+    if (!apiKey || apiKey === 'your-gemini-api-key-here' || apiKey.trim() === '') {
+      this.logger.error('GEMINI_API_KEY not configured or invalid. AI features will be disabled.');
+      this.logger.error('Please set GEMINI_API_KEY in .env file to enable AI features.');
       this.isEnabled = false;
       return;
     }
@@ -43,11 +44,9 @@ export class GeminiAIProvider {
     model: string;
   }> {
     if (!this.isEnabled) {
-      this.logger.warn('AI is disabled. Returning mock response.');
-      return {
-        text: '[Mock AI Response] ' + prompt.substring(0, 100),
-        model: 'mock',
-      };
+      const errorMsg = 'AI is disabled. GEMINI_API_KEY is not configured or invalid.';
+      this.logger.error(errorMsg);
+      throw new Error(errorMsg);
     }
 
     try {
@@ -66,7 +65,8 @@ export class GeminiAIProvider {
       };
     } catch (error) {
       this.logger.error('Gemini API error', error);
-      throw new Error('Failed to generate AI response: ' + error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error('Failed to generate AI response: ' + errorMessage);
     }
   }
 
@@ -158,15 +158,12 @@ ${data.suggestions || 'ไม่ได้ระบุ'}
       }
     } catch (error) {
       this.logger.error('Failed to parse Gemini response as JSON', error);
+      // ถ้า parse ไม่ได้ ให้ throw error (ไม่ fallback)
+      throw new Error('Failed to parse AI response as JSON. AI returned invalid format.');
     }
 
-    // Fallback
-    return {
-      summary: result.text.substring(0, 200),
-      strengths: ['ตรวจสอบจากบันทึกการนิเทศ'],
-      improvements: ['ตรวจสอบจากบันทึกการนิเทศ'],
-      followUpTasks: ['ติดตามผลในครั้งถัดไป'],
-    };
+    // ถ้าไม่พบ JSON ใน response ให้ throw error
+    throw new Error('AI response does not contain valid JSON format.');
   }
 
   /**
@@ -184,19 +181,19 @@ ${data.suggestions || 'ไม่ได้ระบุ'}
 ชื่อไฟล์: "${filename}"
 
 Indicators ที่มี:
-- WP.1: การออกแบบการเรียนรู้
-- WP.2: การจัดการเรียนรู้
-- WP.3: การวัดและประเมินผล
-- ET.1: ความเป็นครู
-- ET.2: การจัดการชั้นเรียน
-- ET.3: ภาวะผู้นำ
-- ET.4: การพัฒนาตนเอง
+- WP_1: การออกแบบการจัดการเรียนรู้ (แผนการสอน, สื่อการสอน, การออกแบบกิจกรรม)
+- WP_2: การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ (ภาพกิจกรรม, วิดีโอการสอน, ผลงานนักเรียน)
+- WP_3: การวัดและประเมินผล (แบบทดสอบ, ผลการประเมิน, การให้ feedback)
+- ET_1: ความเป็นครู (บันทึกสะท้อนตนเอง, ใบประกาศ, การเข้าร่วมชุมชน)
+- ET_2: การจัดการชั้นเรียน (ภาพบรรยากาศ, แผนการจัดการพฤติกรรม, การดูแลนักเรียน)
+- ET_3: ภาวะผู้นำทางวิชาการ (การเป็นวิทยากร, การนำเสนอใน PLC, งานวิจัย)
+- ET_4: การพัฒนาตนเอง (ใบประกาศการอบรม, แผนพัฒนาตนเอง, การเรียนรู้)
 
 ให้สร้างการวิเคราะห์ในรูปแบบ JSON:
 {
   "summary": "สรุปสั้นๆ 1 ประโยค",
   "keywords": ["คำสำคัญ 1", "คำสำคัญ 2", ...],
-  "suggestedIndicators": ["WP.1", "WP.2", ...]
+  "suggestedIndicators": ["WP_1", "WP_2", ...]
 }
 
 ตอบเฉพาะ JSON เท่านั้น:`;
@@ -210,14 +207,12 @@ Indicators ที่มี:
       }
     } catch (error) {
       this.logger.error('Failed to parse Gemini response', error);
+      // ถ้า parse ไม่ได้ ให้ throw error (ไม่ fallback)
+      throw new Error('Failed to parse AI response as JSON. AI returned invalid format.');
     }
 
-    // Fallback
-    return {
-      summary: 'เอกสารหลักฐานเกี่ยวกับการจัดการเรียนการสอน',
-      keywords: ['เอกสาร'],
-      suggestedIndicators: ['WP.1'],
-    };
+    // ถ้าไม่พบ JSON ใน response ให้ throw error
+    throw new Error('AI response does not contain valid JSON format.');
   }
 
   /**

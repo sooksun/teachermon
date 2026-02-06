@@ -1,0 +1,150 @@
+'use client';
+
+import { format } from 'date-fns';
+import { th } from 'date-fns/locale';
+
+interface PortfolioItemCardProps {
+  item: any;
+  onView: (item: any) => void;
+  onDelete: (id: string) => void;
+}
+
+const EVIDENCE_TYPE_LABELS: Record<string, string> = {
+  LESSON_PLAN: 'แผนการสอน',
+  CLASSROOM_PHOTO: 'ภาพถ่ายการสอน',
+  STUDENT_WORK: 'ผลงานนักเรียน',
+  TEACHING_MATERIAL: 'สื่อการสอน',
+  ASSESSMENT_RESULT: 'ผลการประเมิน',
+  CERTIFICATE: 'ใบประกาศนียบัตร',
+  OTHER: 'อื่นๆ',
+};
+
+export function PortfolioItemCard({ item, onView, onDelete }: PortfolioItemCardProps) {
+  const formatThaiDate = (date: string) => {
+    const d = new Date(date);
+    const buddhistYear = d.getFullYear() + 543;
+    return format(d, 'd MMM yyyy', { locale: th }).replace(
+      d.getFullYear().toString(),
+      buddhistYear.toString()
+    );
+  };
+
+  const isVideo = item.itemType === 'VIDEO_LINK';
+
+  return (
+    <div className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow border border-gray-200">
+      <div className="p-5">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              {isVideo ? (
+                <svg
+                  className="w-5 h-5 text-red-500"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+                </svg>
+              ) : (
+                <svg
+                  className="w-5 h-5 text-blue-500"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              )}
+              <h3 className="text-base font-semibold text-gray-900 line-clamp-1">
+                {isVideo ? item.videoTitle : item.originalFilename || item.standardFilename}
+              </h3>
+            </div>
+            <p className="text-xs text-gray-500">
+              {EVIDENCE_TYPE_LABELS[item.evidenceType] || item.evidenceType}
+            </p>
+          </div>
+        </div>
+
+        {/* Platform/File Info */}
+        {isVideo ? (
+          <div className="flex items-center gap-2 mb-3">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+              📹 {item.videoPlatform || 'Video'}
+            </span>
+            {item.pdpaChecked && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                ✓ ตรวจ PDPA
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 mb-3">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+              {item.fileType?.toUpperCase() || 'FILE'}
+            </span>
+            {item.fileSize && (
+              <span className="text-xs text-gray-500">
+                {(item.fileSize / 1024 / 1024).toFixed(2)} MB
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* AI Summary */}
+        {item.aiSummary && (
+          <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+            {item.aiSummary}
+          </p>
+        )}
+
+        {/* Indicators */}
+        {item.indicatorCodes && item.indicatorCodes.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-3">
+            {item.indicatorCodes.slice(0, 3).map((code: string) => (
+              <span
+                key={code}
+                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800"
+              >
+                {code}
+              </span>
+            ))}
+            {item.indicatorCodes.length > 3 && (
+              <span className="text-xs text-gray-500">
+                +{item.indicatorCodes.length - 3} อื่นๆ
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+          <span className="text-xs text-gray-500">
+            {formatThaiDate(item.uploadedAt || item.createdAt)}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onView(item)}
+              className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+            >
+              ดูรายละเอียด
+            </button>
+            <button
+              onClick={() => {
+                if (confirm('คุณต้องการลบรายการนี้หรือไม่?')) {
+                  onDelete(item.id);
+                }
+              }}
+              className="text-sm text-red-600 hover:text-red-700 font-medium"
+            >
+              ลบ
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -30,10 +30,22 @@ export class EvidenceAIService {
     // ใช้ Gemini AI วิเคราะห์
     let analysis;
     try {
+      // ตรวจสอบว่า AI enabled หรือไม่
+      if (!this.geminiAI.isAIEnabled()) {
+        this.logger.error('AI is not enabled. Cannot analyze evidence without GEMINI_API_KEY.');
+        throw new Error('AI is not enabled. Please configure GEMINI_API_KEY in .env file.');
+      }
+      
       analysis = await this.geminiAI.analyzeEvidence(filename);
     } catch (error) {
-      this.logger.warn('Gemini AI failed, using fallback analysis');
-      analysis = this.analyzeFromFilename(filename);
+      // ถ้ามี API key แต่เกิด error ให้ throw ต่อ (ไม่ fallback)
+      if (this.geminiAI.isAIEnabled()) {
+        this.logger.error('Gemini AI failed', error);
+        throw error;
+      }
+      // ถ้าไม่มี API key ให้ throw error
+      this.logger.error('AI is not enabled. Cannot analyze evidence.', error);
+      throw new Error('AI is not enabled. Please configure GEMINI_API_KEY in .env file.');
     }
 
     // สร้างชื่อไฟล์มาตรฐาน
@@ -65,6 +77,84 @@ export class EvidenceAIService {
     });
 
     return result;
+  }
+
+  /**
+   * วิเคราะห์ความเชื่อมโยงระหว่างหลักฐานกับตัวชี้วัดที่เลือก
+   */
+  async analyzeIndicatorConnection(
+    filename: string,
+    fileType: string,
+    selectedIndicators: string[],
+    userId: string,
+  ): Promise<{
+    connections: Array<{
+      indicator: string;
+      relevance: number; // 0-1
+      explanation: string;
+      evidence: string[];
+    }>;
+    overallSummary: string;
+  }> {
+    if (!this.geminiAI.isAIEnabled()) {
+      throw new Error('AI is not enabled. Please configure GEMINI_API_KEY in .env file.');
+    }
+
+    const prompt = `คุณคือผู้เชี่ยวชาญด้านการประเมินสมรรถนะครู
+
+งาน: วิเคราะห์ความเชื่อมโยงระหว่างหลักฐานกับตัวชี้วัดที่เลือก
+
+ชื่อไฟล์: "${filename}"
+ประเภทไฟล์: ${fileType}
+ตัวชี้วัดที่เลือก: ${selectedIndicators.join(', ')}
+
+ตัวชี้วัดที่มี:
+- WP_1: การออกแบบการจัดการเรียนรู้ (แผนการสอน, สื่อการสอน, การออกแบบกิจกรรม)
+- WP_2: การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ (ภาพกิจกรรม, วิดีโอการสอน, ผลงานนักเรียน)
+- WP_3: การวัดและประเมินผล (แบบทดสอบ, ผลการประเมิน, การให้ feedback)
+- ET_1: ความเป็นครู (บันทึกสะท้อนตนเอง, ใบประกาศ, การเข้าร่วมชุมชน)
+- ET_2: การจัดการชั้นเรียน (ภาพบรรยากาศ, แผนการจัดการพฤติกรรม, การดูแลนักเรียน)
+- ET_3: ภาวะผู้นำทางวิชาการ (การเป็นวิทยากร, การนำเสนอใน PLC, งานวิจัย)
+- ET_4: การพัฒนาตนเอง (ใบประกาศการอบรม, แผนพัฒนาตนเอง, การเรียนรู้)
+
+ให้วิเคราะห์ว่าไฟล์นี้เชื่อมโยงกับตัวชี้วัดที่เลือกอย่างไร โดยตอบในรูปแบบ JSON:
+{
+  "connections": [
+    {
+      "indicator": "WP_1",
+      "relevance": 0.85,
+      "explanation": "คำอธิบายว่าทำไมเชื่อมโยง",
+      "evidence": ["รายละเอียดที่ 1", "รายละเอียดที่ 2"]
+    }
+  ],
+  "overallSummary": "สรุปความเชื่อมโยงโดยรวม"
+}
+
+ตอบเฉพาะ JSON เท่านั้น:`;
+
+    try {
+      const result = await this.geminiAI.generateText(prompt);
+      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const analysis = JSON.parse(jsonMatch[0]);
+        
+        // บันทึก activity
+        await this.aiActivityService.logActivity({
+          userId,
+          actionType: 'EVIDENCE_TAG',
+          inputData: { filename, fileType, selectedIndicators },
+          outputData: analysis,
+          modelUsed: this.geminiAI.getModelName(),
+          confidenceScore: 0.80,
+        });
+
+        return analysis;
+      }
+      throw new Error('AI response does not contain valid JSON format.');
+    } catch (error) {
+      this.logger.error('Failed to analyze indicator connection', error);
+      throw error;
+    }
   }
 
   /**

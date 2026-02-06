@@ -24,7 +24,8 @@ const buddhistLocale: typeof th = {
   },
 };
 
-export interface ThaiDatePickerProps extends Omit<DatePickerProps, 'locale' | 'onChange'> {
+export interface ThaiDatePickerProps
+  extends Omit<DatePickerProps, 'locale' | 'onChange' | 'value'> {
   value?: string | Date | Dayjs | null;
   onChange?: (date: Dayjs | null, dateString: string) => void;
   className?: string;
@@ -36,10 +37,18 @@ export function ThaiDatePicker({
   className,
   ...props
 }: ThaiDatePickerProps) {
-  const handleChange = (date: Dayjs | null, dateString: string) => {
-    if (onChange) {
-      onChange(date, dateString);
-    }
+  const handleChange: DatePickerProps['onChange'] = (
+    date,
+    dateString,
+  ) => {
+    if (!onChange) return;
+
+    const normalizedDate = Array.isArray(date) ? date[0] ?? null : date;
+    const normalizedString = Array.isArray(dateString)
+      ? dateString[0] ?? ''
+      : dateString ?? '';
+
+    onChange(normalizedDate, normalizedString);
   };
 
   // Convert value to Dayjs if it's a string or Date

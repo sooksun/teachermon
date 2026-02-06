@@ -17,7 +17,7 @@ import { MentoringAIService } from '../ai/mentoring-ai.service';
 
 @ApiTags('mentoring')
 @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard) // TODO: Enable after login is working
+@UseGuards(JwtAuthGuard)
 @Controller('mentoring')
 export class MentoringController {
   constructor(
@@ -31,31 +31,31 @@ export class MentoringController {
   @ApiQuery({ name: 'teacherId', required: false, type: String })
   @ApiQuery({ name: 'visitType', required: false, type: String })
   @Get()
-  findAll(@Query() query: any) {
+  findAll(@Query() query: any): Promise<any> {
     return this.mentoringService.findAll(query);
   }
 
   @ApiOperation({ summary: 'Get mentoring visit by ID' })
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id') id: string): Promise<any> {
     return this.mentoringService.findOne(id);
   }
 
   @ApiOperation({ summary: 'Create new mentoring visit' })
   @Post()
-  create(@Body() data: any) {
+  create(@Body() data: any): Promise<any> {
     return this.mentoringService.create(data);
   }
 
   @ApiOperation({ summary: 'Update mentoring visit' })
   @Put(':id')
-  update(@Param('id') id: string, @Body() data: any) {
+  update(@Param('id') id: string, @Body() data: any): Promise<any> {
     return this.mentoringService.update(id, data);
   }
 
   @ApiOperation({ summary: 'Delete mentoring visit' })
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  remove(@Param('id') id: string): Promise<any> {
     return this.mentoringService.remove(id);
   }
 

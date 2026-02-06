@@ -7,26 +7,34 @@ export class AssessmentService {
   constructor(private prisma: PrismaService) {}
 
   // Competency Assessments
-  async findAllAssessments(teacherId?: string) {
+  async findAllAssessments(teacherId?: string, page = 1, limit = 20) {
     const where: Prisma.CompetencyAssessmentWhereInput = teacherId ? { teacherId } : {};
+    const skip = (page - 1) * limit;
 
-    return this.prisma.competencyAssessment.findMany({
-      where,
-      include: {
-        teacher: {
-          select: {
-            id: true,
-            fullName: true,
-            school: {
-              select: {
-                schoolName: true,
+    const [data, total] = await Promise.all([
+      this.prisma.competencyAssessment.findMany({
+        where,
+        include: {
+          teacher: {
+            select: {
+              id: true,
+              fullName: true,
+              school: {
+                select: {
+                  schoolName: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.competencyAssessment.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOneAssessment(id: string) {
@@ -78,26 +86,34 @@ export class AssessmentService {
   }
 
   // Development Plans
-  async findAllPlans(teacherId?: string) {
+  async findAllPlans(teacherId?: string, page = 1, limit = 20) {
     const where: Prisma.DevelopmentPlanWhereInput = teacherId ? { teacherId } : {};
+    const skip = (page - 1) * limit;
 
-    return this.prisma.developmentPlan.findMany({
-      where,
-      include: {
-        teacher: {
-          select: {
-            id: true,
-            fullName: true,
-            school: {
-              select: {
-                schoolName: true,
+    const [data, total] = await Promise.all([
+      this.prisma.developmentPlan.findMany({
+        where,
+        include: {
+          teacher: {
+            select: {
+              id: true,
+              fullName: true,
+              school: {
+                select: {
+                  schoolName: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.developmentPlan.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOnePlan(id: string) {

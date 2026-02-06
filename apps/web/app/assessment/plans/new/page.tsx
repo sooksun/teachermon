@@ -13,7 +13,7 @@ import type { Dayjs } from 'dayjs';
 
 const FOCUS_COMPETENCY_OPTIONS = [
   { value: 'WP.1', label: 'WP.1 - การออกแบบการจัดการเรียนรู้' },
-  { value: 'WP.2', label: 'WP.2 - การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ' },
+  { value: 'WP.2', label: 'WP.2 - การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ (Active Learning)' },
   { value: 'WP.3', label: 'WP.3 - การวัดและประเมินผล' },
   { value: 'ET.1', label: 'ET.1 - ความเป็นครู' },
   { value: 'ET.2', label: 'ET.2 - การจัดการชั้นเรียน' },
@@ -21,8 +21,15 @@ const FOCUS_COMPETENCY_OPTIONS = [
   { value: 'ET.4', label: 'ET.4 - การพัฒนาตนเอง' },
 ] as const;
 
+const SUPPORT_TYPE_OPTIONS = [
+  { value: 'COACHING', label: 'Coaching' },
+  { value: 'TRAINING', label: 'Training' },
+  { value: 'MENTORING', label: 'Mentoring' },
+  { value: 'WORKSHOP', label: 'Workshop' },
+] as const;
+
 const PROGRESS_STATUS_OPTIONS = [
-  { value: 'PLANNING', label: 'กำลังวางแผน' },
+  { value: 'DRAFT', label: 'ร่าง/กำลังวางแผน' },
   { value: 'IN_PROGRESS', label: 'กำลังดำเนินการ' },
   { value: 'COMPLETED', label: 'เสร็จสิ้น' },
   { value: 'CANCELLED', label: 'ยกเลิก' },
@@ -34,14 +41,15 @@ export default function NewDevelopmentPlanPage() {
 
   const [formData, setFormData] = useState({
     teacherId: '',
-    focusCompetency: 'WP.1',
-    currentLevel: 1,
-    targetLevel: 3,
+    focusCompetency: 'WP.2',
     actionPlan: '',
+    supportType: 'COACHING',
     resources: '',
+    budgetAllocated: '' as string,
+    budgetUsed: '' as string,
     startDate: null as Dayjs | null,
     endDate: null as Dayjs | null,
-    progressStatus: 'PLANNING',
+    progressStatus: 'DRAFT',
   });
 
   // Fetch teachers for dropdown
@@ -84,16 +92,18 @@ export default function NewDevelopmentPlanPage() {
       toast.error('กรุณาเลือกครู', { position: 'top-right', autoClose: 3000 });
       return;
     }
+    const budgetAlloc = formData.budgetAllocated ? parseFloat(formData.budgetAllocated) : undefined;
+    const budgetUsedVal = formData.budgetUsed ? parseFloat(formData.budgetUsed) : undefined;
     createMutation.mutate({
       teacherId: formData.teacherId,
       focusCompetency: formData.focusCompetency,
-      currentLevel: Number(formData.currentLevel),
-      targetLevel: Number(formData.targetLevel),
       actionPlan: formData.actionPlan,
-      resources: formData.resources || undefined,
+      supportType: formData.supportType,
       startDate: formData.startDate.toDate(),
       endDate: formData.endDate.toDate(),
       progressStatus: formData.progressStatus,
+      ...(budgetAlloc != null && !Number.isNaN(budgetAlloc) && { budgetAllocated: budgetAlloc }),
+      ...(budgetUsedVal != null && !Number.isNaN(budgetUsedVal) && { budgetUsed: budgetUsedVal }),
     });
   };
 
@@ -163,47 +173,20 @@ export default function NewDevelopmentPlanPage() {
               />
             </div>
 
-            {/* ระดับปัจจุบัน & ระดับเป้าหมาย */}
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <label htmlFor="currentLevel" className="block text-sm font-medium text-gray-700 mb-1">
-                  ระดับปัจจุบัน <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="currentLevel"
-                  name="currentLevel"
-                  required
-                  value={formData.currentLevel}
-                  onChange={handleChange}
-                  className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                >
-                  <option value="1">1 - ต้องพัฒนา</option>
-                  <option value="2">2 - พอใช้</option>
-                  <option value="3">3 - ดี</option>
-                  <option value="4">4 - ดีมาก</option>
-                  <option value="5">5 - ดีเยี่ยม</option>
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="targetLevel" className="block text-sm font-medium text-gray-700 mb-1">
-                  ระดับเป้าหมาย <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="targetLevel"
-                  name="targetLevel"
-                  required
-                  value={formData.targetLevel}
-                  onChange={handleChange}
-                  className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                >
-                  <option value="1">1 - ต้องพัฒนา</option>
-                  <option value="2">2 - พอใช้</option>
-                  <option value="3">3 - ดี</option>
-                  <option value="4">4 - ดีมาก</option>
-                  <option value="5">5 - ดีเยี่ยม</option>
-                </select>
-              </div>
+            {/* ประเภทการสนับสนุน */}
+            <div>
+              <label htmlFor="supportType" className="block text-sm font-medium text-gray-700 mb-1">
+                ประเภทการสนับสนุน <span className="text-red-500">*</span>
+              </label>
+              <Combobox
+                options={SUPPORT_TYPE_OPTIONS.map((opt) => ({
+                  value: opt.value,
+                  label: opt.label,
+                }))}
+                value={formData.supportType}
+                onChange={(value) => setFormData((prev) => ({ ...prev, supportType: value }))}
+                placeholder="เลือกประเภท"
+              />
             </div>
 
             {/* แผนการดำเนินงาน */}
@@ -234,9 +217,45 @@ export default function NewDevelopmentPlanPage() {
                 rows={3}
                 value={formData.resources}
                 onChange={handleChange}
-                placeholder="เช่น งบประมาณ, อุปกรณ์, วิทยากร, เวลา..."
+                placeholder="เช่น อุปกรณ์, วิทยากร, เวลา..."
                 className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               />
+            </div>
+
+            {/* งบประมาณ (ติดตามการใช้เงิน) */}
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div>
+                <label htmlFor="budgetAllocated" className="block text-sm font-medium text-gray-700 mb-1">
+                  งบประมาณที่จัดสรร (บาท)
+                </label>
+                <input
+                  type="number"
+                  id="budgetAllocated"
+                  name="budgetAllocated"
+                  min={0}
+                  step={0.01}
+                  value={formData.budgetAllocated}
+                  onChange={handleChange}
+                  placeholder="0"
+                  className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="budgetUsed" className="block text-sm font-medium text-gray-700 mb-1">
+                  งบที่ใช้ไปแล้ว (บาท)
+                </label>
+                <input
+                  type="number"
+                  id="budgetUsed"
+                  name="budgetUsed"
+                  min={0}
+                  step={0.01}
+                  value={formData.budgetUsed}
+                  onChange={handleChange}
+                  placeholder="0"
+                  className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                />
+              </div>
             </div>
 
             {/* วันที่เริ่มต้น & สิ้นสุด */}

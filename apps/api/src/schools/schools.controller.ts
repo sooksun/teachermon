@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('schools')
 @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard) // TODO: Enable after login is working
+@UseGuards(JwtAuthGuard)
 @Controller('schools')
 export class SchoolsController {
   constructor(private schoolsService: SchoolsService) {}

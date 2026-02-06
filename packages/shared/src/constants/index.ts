@@ -27,11 +27,24 @@ export const VISIT_TYPES = {
   FOLLOW_UP: 'Follow Up',
 } as const;
 
-export const COMPETENCY_LEVELS = {
+export const COMPETENCY_LEVEL = {
   NEEDS_SUPPORT: 'ต้องเสริม',
   FAIR: 'พอใช้',
   GOOD: 'ดี',
   EXCELLENT: 'ดีเยี่ยม',
+} as const;
+
+// Alias for backwards compatibility
+export const COMPETENCY_LEVELS = COMPETENCY_LEVEL;
+
+export const ASSESSMENT_PERIOD = {
+  BEFORE: 'ก่อนการพัฒนา',
+  MIDTERM: 'กลางการพัฒนา',
+  AFTER: 'หลังการพัฒนา',
+  QUARTERLY_1: 'ไตรมาส 1',
+  QUARTERLY_2: 'ไตรมาส 2',
+  QUARTERLY_3: 'ไตรมาส 3',
+  QUARTERLY_4: 'ไตรมาส 4',
 } as const;
 
 export const DEFAULT_PAGINATION = {

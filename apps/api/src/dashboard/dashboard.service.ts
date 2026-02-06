@@ -1,11 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class DashboardService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) {}
 
-  async getOverallStats() {
+  async getOverallStats(): Promise<any> {
+    // Cache dashboard stats for 30 seconds
+    const cacheKey = 'dashboard:overallStats';
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached;
     const [
       totalTeachers,
       activeTeachers,
@@ -17,6 +26,8 @@ export class DashboardService {
       teachersByStatus,
       recentVisits,
       recentJournals,
+      planByStatus,
+      allPlans,
     ] = await Promise.all([
       this.prisma.teacher.count(),
       this.prisma.teacher.count({ where: { status: 'ACTIVE' } }),
@@ -59,24 +70,57 @@ export class DashboardService {
           },
         },
       }),
+      this.prisma.developmentPlan.groupBy({
+        by: ['progressStatus'],
+        _count: true,
+      }),
+      this.prisma.developmentPlan.findMany({
+        select: { budgetAllocated: true, budgetUsed: true, focusCompetency: true },
+      }),
     ]);
 
-    // Get teachers by region
-    const teachersWithSchool = await this.prisma.teacher.findMany({
-      include: {
-        school: {
-          select: { region: true },
-        },
-      },
-    });
-
-    const regionStats = teachersWithSchool.reduce((acc: any, teacher) => {
-      const region = teacher.school.region;
-      acc[region] = (acc[region] || 0) + 1;
+    // Get teachers by region using raw aggregation (avoid loading all teachers)
+    const regionRows: any[] = await this.prisma.$queryRaw`
+      SELECT s.region, COUNT(t.id) as count
+      FROM teacher_profile t
+      JOIN school_profile s ON t.school_id = s.id
+      GROUP BY s.region
+    `;
+    const regionStats = regionRows.reduce((acc: any, row: any) => {
+      acc[row.region] = Number(row.count);
       return acc;
     }, {});
 
-    return {
+    // Plan progress (Objective 2: monitor plan)
+    const planProgress = planByStatus.reduce(
+      (acc: Record<string, number>, item) => {
+        acc[item.progressStatus] = item._count;
+        return acc;
+      },
+      {},
+    );
+    const totalPlans = Object.values(planProgress).reduce((a, b) => a + b, 0);
+
+    // Budget (Objective 2: monitor money)
+    let totalAllocated = 0;
+    let totalUsed = 0;
+    for (const p of allPlans) {
+      const alloc = p.budgetAllocated != null ? Number(p.budgetAllocated) : 0;
+      const used = p.budgetUsed != null ? Number(p.budgetUsed) : 0;
+      totalAllocated += alloc;
+      totalUsed += used;
+    }
+
+    // Active Learning focus count (Objective 1: upskill Active Learning - WP.2)
+    const activeLearningPlanCount = allPlans.filter(
+      (p) =>
+        p.focusCompetency === 'WP.2' ||
+        p.focusCompetency === 'WP_2' ||
+        String(p.focusCompetency).toUpperCase().includes('WP.2') ||
+        String(p.focusCompetency).toUpperCase().includes('WP_2'),
+    ).length;
+
+    const result = {
       summary: {
         totalTeachers,
         activeTeachers,
@@ -84,7 +128,18 @@ export class DashboardService {
         totalVisits,
         totalJournals,
         totalPLC,
+        totalPlans,
       },
+      planProgress: {
+        ...planProgress,
+        total: totalPlans,
+      },
+      planBudget: {
+        totalAllocated,
+        totalUsed,
+        totalRemaining: Math.max(0, totalAllocated - totalUsed),
+      },
+      activeLearningPlanCount,
       teachersByRegion: regionStats,
       teachersByStatus: teachersByStatus.reduce((acc: any, item) => {
         acc[item.status] = item._count;
@@ -95,6 +150,9 @@ export class DashboardService {
         journals: recentJournals,
       },
     };
+
+    await this.cacheManager.set(cacheKey, result, 30000);
+    return result;
   }
 
   async getTeacherStats() {
@@ -120,69 +178,55 @@ export class DashboardService {
   }
 
   async getMonthlyTrends() {
-    // Get data for the last 12 months
+    // Cache monthly trends for 60 seconds
+    const cacheKey = 'dashboard:monthlyTrends';
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached;
+
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const [visits, journals, plc] = await Promise.all([
-      this.prisma.mentoringVisit.findMany({
-        where: {
-          visitDate: {
-            gte: sixMonthsAgo,
-          },
-        },
-        select: {
-          visitDate: true,
-        },
-      }),
-      this.prisma.reflectiveJournal.findMany({
-        where: {
-          createdAt: {
-            gte: sixMonthsAgo,
-          },
-        },
-        select: {
-          month: true,
-        },
-      }),
-      this.prisma.pLCActivity.findMany({
-        where: {
-          plcDate: {
-            gte: sixMonthsAgo,
-          },
-        },
-        select: {
-          plcDate: true,
-        },
-      }),
+    // Use raw SQL aggregation instead of loading all records into memory
+    const [visitRows, journalRows, plcRows] = await Promise.all([
+      this.prisma.$queryRaw<any[]>`
+        SELECT DATE_FORMAT(visit_date, '%Y-%m') as month, COUNT(*) as count
+        FROM mentoring_visit
+        WHERE visit_date >= ${sixMonthsAgo}
+        GROUP BY DATE_FORMAT(visit_date, '%Y-%m')
+      `,
+      this.prisma.$queryRaw<any[]>`
+        SELECT month, COUNT(*) as count
+        FROM reflective_journal
+        WHERE created_at >= ${sixMonthsAgo}
+        GROUP BY month
+      `,
+      this.prisma.$queryRaw<any[]>`
+        SELECT DATE_FORMAT(plc_date, '%Y-%m') as month, COUNT(*) as count
+        FROM plc_activity
+        WHERE plc_date >= ${sixMonthsAgo}
+        GROUP BY DATE_FORMAT(plc_date, '%Y-%m')
+      `,
     ]);
 
-    // Group by month
-    const monthlyData: any = {};
+    const monthlyData: Record<string, { visits: number; journals: number; plc: number }> = {};
+    for (const row of visitRows) {
+      if (!monthlyData[row.month]) monthlyData[row.month] = { visits: 0, journals: 0, plc: 0 };
+      monthlyData[row.month].visits = Number(row.count);
+    }
+    for (const row of journalRows) {
+      if (!monthlyData[row.month]) monthlyData[row.month] = { visits: 0, journals: 0, plc: 0 };
+      monthlyData[row.month].journals = Number(row.count);
+    }
+    for (const row of plcRows) {
+      if (!monthlyData[row.month]) monthlyData[row.month] = { visits: 0, journals: 0, plc: 0 };
+      monthlyData[row.month].plc = Number(row.count);
+    }
 
-    visits.forEach((visit) => {
-      const month = visit.visitDate.toISOString().slice(0, 7);
-      if (!monthlyData[month]) monthlyData[month] = { visits: 0, journals: 0, plc: 0 };
-      monthlyData[month].visits++;
-    });
-
-    journals.forEach((journal) => {
-      const month = journal.month;
-      if (!monthlyData[month]) monthlyData[month] = { visits: 0, journals: 0, plc: 0 };
-      monthlyData[month].journals++;
-    });
-
-    plc.forEach((activity) => {
-      const month = activity.plcDate.toISOString().slice(0, 7);
-      if (!monthlyData[month]) monthlyData[month] = { visits: 0, journals: 0, plc: 0 };
-      monthlyData[month].plc++;
-    });
-
-    return Object.entries(monthlyData)
+    const result = Object.entries(monthlyData)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, data]) => ({
-        month,
-        ...(data as any),
-      }));
+      .map(([month, data]) => ({ month, ...data }));
+
+    await this.cacheManager.set(cacheKey, result, 60000);
+    return result;
   }
 }

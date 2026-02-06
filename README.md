@@ -20,28 +20,31 @@
 
 ## ⚡ Quick Start
 
+### Development Mode (5 นาที)
+
 ```bash
 # 1. ติดตั้ง dependencies
 pnpm install
 
-# 2. Setup database
-cd packages/database
-pnpm db:generate
-pnpm db:migrate
-pnpm db:seed
+# 2. Setup database (อัตโนมัติ)
+docker-compose up -d postgres
+.\scripts\setup-db.ps1
 
-# 3. รัน backend (terminal 1)
-cd apps/api
-pnpm dev
-
-# 4. รัน frontend (terminal 2)
-cd apps/web
+# 3. รัน development
 pnpm dev
 ```
 
-**เข้าใช้งาน**: http://localhost:3000 (admin@teachermon.com / password123)
+**เข้าใช้งาน**: 
+- 🌐 Web: http://localhost:3000
+- 🔧 API: http://localhost:3001
+- 📚 Swagger: http://localhost:3001/api
 
-📖 **คู่มือละเอียด**: [QUICK_START.md](QUICK_START.md)
+**Login**: `admin@example.com` / `admin123`
+
+📖 **คู่มือละเอียด**: 
+- [QUICK_START.md](QUICK_START.md) - เริ่มใช้งานด่วน
+- [SETUP_GUIDE.md](SETUP_GUIDE.md) - Setup database
+- [READY_TO_TEST.md](READY_TO_TEST.md) - ⭐ เริ่มทดสอบ
 
 ## 🛠️ Tech Stack
 
@@ -206,13 +209,16 @@ pnpm test:cov           # Coverage report
 | API Docs | http://localhost:3001/api/docs | Swagger UI |
 | Prisma Studio | http://localhost:5555 | Database GUI |
 
-## 👤 Test Users
+## 👤 Test Users (Development)
 
 | Role | Email | Password |
 |------|-------|----------|
-| Admin | admin@teachermon.com | password123 |
-| Manager | manager@teachermon.com | password123 |
-| Teacher | pimchanok@example.com | password123 |
+| Admin | admin@example.com | admin123 |
+| Manager | manager@example.com | manager123 |
+| Mentor | mentor@example.com | mentor123 |
+| Teacher | teacher1@example.com | teacher123 |
+
+⚠️ **Production**: เปลี่ยน password ทั้งหมดก่อน deploy!
 
 ## 🎓 Key Concepts
 
@@ -226,11 +232,32 @@ pnpm test:cov           # Coverage report
 
 ## 📚 เอกสารอ้างอิง
 
-- [🚀 Quick Start](QUICK_START.md) - เริ่มต้นใช้งานด่วน 5 นาที
-- [📖 Installation](INSTALLATION.md) - คู่มือติดตั้งแบบละเอียด
-- [📊 Project Summary](PROJECT_SUMMARY.md) - สรุปโปรเจกต์และฟีเจอร์
-- [📋 PRD](doc/doc_ref.pdf) - Product Requirements Document
-- [📄 Proposal](doc/doc_ref1.pdf) - ข้อเสนอโครงการ กสศ.
+### 🚀 Getting Started (เริ่มใช้งาน)
+- **[READY_TO_TEST.md](READY_TO_TEST.md)** ⭐ - **เริ่มที่นี่!** Quick Start สำหรับทดสอบ
+- [QUICK_START.md](QUICK_START.md) - เริ่มต้นใช้งานด่วน 5 นาที
+- [INSTALLATION.md](INSTALLATION.md) - คู่มือติดตั้งแบบละเอียด
+- [SETUP_GUIDE.md](SETUP_GUIDE.md) - คู่มือ setup database
+
+### 🧪 Testing & QA
+- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - คู่มือทดสอบครบถ้วน
+- `scripts/test-api.ps1` - ทดสอบ API อัตโนมัติ
+- `scripts/import-data.ps1` - Import ข้อมูล CSV
+- [data/README.md](data/README.md) - คู่มือ import data
+
+### 🚀 Production Deployment
+- **[PRODUCTION_READY.md](PRODUCTION_READY.md)** ⭐ - สรุป deployment ทั้งหมด
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - คู่มือ deploy production
+- **[PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md)** - Checklist ก่อน deploy
+- **[SECURITY_GUIDE.md](SECURITY_GUIDE.md)** - Security hardening
+- `scripts/deploy-production.sh` - Deploy อัตโนมัติ
+- `scripts/backup-db.sh` - Database backup
+- `scripts/health-check.sh` - Health monitoring
+
+### 📊 Project Info
+- [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) - สรุปโปรเจกต์และฟีเจอร์
+- [TASK_SUMMARY.md](TASK_SUMMARY.md) - สรุปงานทั้งหมด (20/20 todos)
+- [STATUS.md](STATUS.md) - สถานะปัจจุบัน
+- [CHANGELOG.md](CHANGELOG.md) - บันทึกการเปลี่ยนแปลง
 
 ## 🏗️ Architecture
 

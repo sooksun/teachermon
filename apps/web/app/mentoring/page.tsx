@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { MainLayout } from '@/components/layout/main-layout';
 import { apiClient } from '@/lib/api-client';
 import Link from 'next/link';
+import { formatThaiDate } from '@/lib/utils';
 
 export default function MentoringPage() {
   const [filters, setFilters] = useState({
@@ -65,7 +66,7 @@ export default function MentoringPage() {
                           {visit.teacher.school.schoolName} • {visit.teacher.school.province}
                         </p>
                         <p className="mt-1 text-xs text-gray-500">
-                          {new Date(visit.visitDate).toLocaleDateString('th-TH')} • ผู้สังเกต: {visit.observer}
+                          {formatThaiDate(visit.visitDate)} • ผู้สังเกต: {visit.observer}
                         </p>
 
                         {visit.strengths && (

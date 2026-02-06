@@ -18,7 +18,7 @@ import { PDPAScannerService } from '../ai/pdpa-scanner.service';
 
 @ApiTags('journals')
 @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard) // TODO: Enable after login is working
+@UseGuards(JwtAuthGuard)
 @Controller('journals')
 export class JournalsController {
   constructor(
@@ -29,9 +29,15 @@ export class JournalsController {
 
   @ApiOperation({ summary: 'Get all reflective journals' })
   @ApiQuery({ name: 'teacherId', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @Get()
-  findAll(@Query('teacherId') teacherId?: string) {
-    return this.journalsService.findAll(teacherId);
+  findAll(
+    @Query('teacherId') teacherId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.journalsService.findAll(teacherId, page || 1, Math.min(limit || 20, 100));
   }
 
   @ApiOperation({ summary: 'Get journal by ID' })

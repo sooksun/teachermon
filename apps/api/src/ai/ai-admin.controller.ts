@@ -105,7 +105,7 @@ export class AIAdminController {
   async getPDPAHistory(
     @Param('sourceType') sourceType: string,
     @Param('sourceId') sourceId: string,
-  ) {
+  ): Promise<any[]> {
     return this.pdpaScanner.getAuditHistory(sourceType, sourceId);
   }
 
@@ -115,7 +115,7 @@ export class AIAdminController {
   async acknowledgePDPA(
     @Param('auditId') auditId: string,
     @Request() req: any,
-  ) {
+  ): Promise<any> {
     const userId = req.user?.userId || 'demo-admin';
     return this.pdpaScanner.acknowledgeRisk(auditId, userId);
   }

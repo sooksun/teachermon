@@ -147,6 +147,52 @@ enum PDPARiskLevel {
   HIGH_RISK        // เสี่ยงสูง - ต้องแก้ไข
 }
 
+enum PortfolioItemType {
+  FILE              // ไฟล์ PDF, รูปภาพ
+  VIDEO_LINK        // ลิงก์วิดีโอ (YouTube, Google Drive, etc.)
+}
+
+enum SelfAssessmentStatus {
+  DRAFT             // ร่าง
+  SUBMITTED         // ส่งแล้ว
+  REVIEWED          // ตรวจสอบแล้ว
+}
+
+enum ConsentType {
+  DATA_COLLECTION      // การเก็บรวบรวมข้อมูล
+  DATA_PROCESSING      // การประมวลผลข้อมูล
+  DATA_SHARING         // การเปิดเผยข้อมูล
+  MARKETING            // การตลาด
+  ANALYTICS            // การวิเคราะห์ข้อมูล
+}
+
+enum ConsentStatus {
+  PENDING              // รอการยินยอม
+  GRANTED              // ยินยอมแล้ว
+  REVOKED              // ถอนความยินยอม
+  EXPIRED              // หมดอายุ
+}
+
+// Budget / Financial Tracking
+enum BudgetCategory {
+  MENTORING            // ค่าหนุนเสริม/นิเทศ
+  PLC                  // ค่ากิจกรรม PLC
+  TRAINING             // ค่าอบรม/พัฒนา
+  MATERIAL             // ค่าวัสดุ/อุปกรณ์
+  TRAVEL               // ค่าเดินทาง
+  ACCOMMODATION        // ค่าที่พัก
+  FOOD                 // ค่าอาหาร
+  PRINTING             // ค่าพิมพ์/เอกสาร
+  COMMUNICATION        // ค่าสื่อสาร
+  OTHER                // อื่นๆ
+}
+
+enum TransactionStatus {
+  PENDING              // รออนุมัติ
+  APPROVED             // อนุมัติแล้ว
+  REJECTED             // ปฏิเสธ
+}
+
 // =============================================
 // MAIN TABLES
 // =============================================
@@ -169,6 +215,8 @@ model School {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
+  @@index([region])
+  @@index([province])
   @@map("school_profile")
 }
 
@@ -195,15 +243,22 @@ model Teacher {
   // Relations
   mentoringVisits     MentoringVisit[]
   competencyAssessments CompetencyAssessment[]
+  selfAssessments     SelfAssessment[]
   reflectiveJournals  ReflectiveJournal[]
   plcActivities       PLCActivity[]
   developmentPlans    DevelopmentPlan[]
   evidencePortfolios  EvidencePortfolio[]
   user                User?
+  consents            Consent[]
   
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
+  @@index([schoolId])
+  @@index([status])
+  @@index([cohort])
+  @@index([schoolId, status])
+  @@index([createdAt])
   @@map("teacher_profile")
 }
 
@@ -231,6 +286,10 @@ model MentoringVisit {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
+  @@index([teacherId])
+  @@index([visitDate])
+  @@index([teacherId, visitDate])
+  @@index([visitType])
   @@map("mentoring_visit")
 }
 
@@ -256,6 +315,8 @@ model CompetencyAssessment {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
+  @@index([teacherId])
+  @@index([assessmentPeriod])
   @@map("competency_assessment")
 }
 
@@ -276,6 +337,8 @@ model ReflectiveJournal {
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
   @@unique([teacherId, month])
+  @@index([teacherId])
+  @@index([month])
   @@map("reflective_journal")
 }
 
@@ -295,6 +358,10 @@ model PLCActivity {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
+  @@index([teacherId])
+  @@index([plcDate])
+  @@index([teacherId, plcDate])
+  @@index([plcLevel])
   @@map("plc_activity")
 }
 
@@ -313,10 +380,17 @@ model DevelopmentPlan {
   endDate             DateTime  @map("end_date")
   progressStatus      PlanStatus @map("progress_status") @default(DRAFT)
   progressNotes       String?   @map("progress_notes") @db.Text
+
+  // Budget tracking (Objective 2: monitor plan & money)
+  budgetAllocated     Decimal?  @map("budget_allocated") @db.Decimal(15, 2) // งบประมาณที่จัดสรร (บาท)
+  budgetUsed          Decimal?  @map("budget_used") @db.Decimal(15, 2)      // งบที่ใช้ไป (บาท)
   
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
+  @@index([teacherId])
+  @@index([progressStatus])
+  @@index([teacherId, progressStatus])
   @@map("development_plan")
 }
 
@@ -355,6 +429,9 @@ model User {
   isActive            Boolean   @default(true) @map("is_active")
   lastLogin           DateTime? @map("last_login")
   
+  // Relations
+  consents            Consent[]
+  
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
@@ -365,6 +442,56 @@ model User {
 // AI & EVIDENCE PORTFOLIO TABLES
 // =============================================
 
+model SelfAssessment {
+  id                  String    @id @default(uuid())
+  
+  // Foreign Keys
+  teacherId           String    @map("teacher_id")
+  teacher             Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  // Assessment Period
+  assessmentPeriod    AssessmentPeriod @map("assessment_period")
+  assessmentDate      DateTime  @default(now()) @map("assessment_date")
+  
+  // Self-Assessment Scores (1-5 scale)
+  pedagogyScore       Int       @map("pedagogy_score")
+  classroomScore      Int       @map("classroom_score")
+  communityScore      Int       @map("community_score")
+  professionalismScore Int      @map("professionalism_score")
+  
+  // Self-Reflection
+  pedagogyReflection  String?   @map("pedagogy_reflection") @db.Text
+  classroomReflection String?   @map("classroom_reflection") @db.Text
+  communityReflection String?   @map("community_reflection") @db.Text
+  professionalismReflection String? @map("professionalism_reflection") @db.Text
+  
+  // Overall
+  overallLevel        CompetencyLevel @map("overall_level")
+  strengths           String?   @db.Text // จุดเด่น
+  areasForImprovement String?   @map("areas_for_improvement") @db.Text // จุดที่ต้องพัฒนา
+  actionPlan          String?   @map("action_plan") @db.Text // แผนการพัฒนา
+  
+  // Status
+  status              SelfAssessmentStatus @default(DRAFT)
+  submittedAt         DateTime? @map("submitted_at")
+  
+  // Mentor/Supervisor Review
+  reviewedBy          String?   @map("reviewed_by") // user_id of reviewer
+  reviewedAt          DateTime? @map("reviewed_at")
+  reviewerComments    String?   @map("reviewer_comments") @db.Text
+  
+  // Relations
+  portfolioItems      EvidencePortfolio[]
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@index([teacherId])
+  @@index([assessmentPeriod])
+  @@index([status])
+  @@map("self_assessment")
+}
+
 model EvidencePortfolio {
   id                  String    @id @default(uuid())
   
@@ -372,12 +499,24 @@ model EvidencePortfolio {
   teacherId           String    @map("teacher_id")
   teacher             Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   
-  // File Information
-  originalFilename    String    @map("original_filename")
-  standardFilename    String    @map("standard_filename") // AI-generated standardized name
-  fileUrl             String    @map("file_url")
-  fileSize            Int       @map("file_size") // in bytes
-  mimeType            String    @map("mime_type")
+  selfAssessmentId    String?   @map("self_assessment_id") // เชื่อมกับการประเมินตนเอง
+  selfAssessment      SelfAssessment? @relation(fields: [selfAssessmentId], references: [id], onDelete: SetNull)
+  
+  // Item Type & Content
+  itemType            PortfolioItemType @default(FILE) @map("item_type")
+  
+  // File Information (for FILE type)
+  originalFilename    String?   @map("original_filename")
+  standardFilename    String?   @map("standard_filename") // AI-generated standardized name
+  fileUrl             String?   @map("file_url")
+  fileSize            Int?      @map("file_size") // in bytes
+  mimeType            String?   @map("mime_type")
+  
+  // Video Link Information (for VIDEO_LINK type)
+  videoUrl            String?   @map("video_url")
+  videoTitle          String?   @map("video_title")
+  videoDescription    String?   @map("video_description") @db.Text
+  videoPlatform       String?   @map("video_platform") // youtube, google_drive, vimeo, etc.
   
   // Evidence Classification
   evidenceType        EvidenceType @map("evidence_type")
@@ -404,6 +543,7 @@ model EvidencePortfolio {
 
   @@index([teacherId])
   @@index([evidenceType])
+  @@index([selfAssessmentId])
   @@map("evidence_portfolio")
 }
 
@@ -472,4 +612,152 @@ model PDPAAudit {
   @@index([riskLevel])
   @@index([createdAt])
   @@map("pdpa_audit")
+}
+
+model Consent {
+  id                  String          @id @default(uuid())
+  userId              String          @map("user_id")
+  teacherId           String?         @map("teacher_id")
+  consentType         ConsentType     @map("consent_type")
+  status              ConsentStatus   @default(PENDING)
+  
+  // Consent Details
+  grantedAt           DateTime?       @map("granted_at")
+  revokedAt           DateTime?       @map("revoked_at")
+  expiresAt          DateTime?       @map("expires_at")
+  
+  // Legal
+  privacyPolicyVersion String?        @map("privacy_policy_version")
+  termsVersion        String?         @map("terms_version")
+  ipAddress           String?         @map("ip_address")
+  userAgent           String?         @map("user_agent")
+  
+  // Relations
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teacher             Teacher?        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  
+  @@unique([userId, consentType])
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("consent")
+}
+
+// =============================================
+// BUDGET / FINANCIAL TRACKING
+// =============================================
+
+model ProjectBudget {
+  id                  String    @id @default(uuid())
+  fiscalYear          String    @map("fiscal_year")       // ปีงบประมาณ เช่น "2569"
+  name                String                              // ชื่องบ เช่น "งบโครงการครูรัก(ษ์)ถิ่น ปี 2569"
+  totalAllocated      Decimal   @map("total_allocated") @db.Decimal(15, 2)  // งบจัดสรรรวม
+  fundingSource       String?   @map("funding_source")    // แหล่งเงิน
+  description         String?   @db.Text                  // รายละเอียด
+  isActive            Boolean   @default(true) @map("is_active")
+
+  createdBy           String?   @map("created_by")        // user_id
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  transactions        BudgetTransaction[]
+
+  @@index([fiscalYear])
+  @@index([isActive])
+  @@map("project_budget")
+}
+
+model BudgetTransaction {
+  id                  String    @id @default(uuid())
+
+  // FK to project budget
+  projectBudgetId     String    @map("project_budget_id")
+  projectBudget       ProjectBudget @relation(fields: [projectBudgetId], references: [id], onDelete: Cascade)
+
+  transactionDate     DateTime  @map("transaction_date")
+  amount              Decimal   @map("amount") @db.Decimal(15, 2)
+  category            BudgetCategory
+  description         String    @db.Text                  // รายละเอียดรายจ่าย
+  recipient           String?                             // ผู้รับเงิน
+
+  // Receipt
+  receiptNumber       String?   @map("receipt_number")    // เลขที่ใบเสร็จ
+  receiptFile         String?   @map("receipt_file")      // URL ไฟล์แนบ
+
+  // Link to existing activities (optional)
+  relatedActivityType String?   @map("related_activity_type") // MENTORING, PLC, TRAINING
+  relatedActivityId   String?   @map("related_activity_id")
+
+  // Approval workflow
+  status              TransactionStatus @default(PENDING)
+  createdBy           String    @map("created_by")        // user_id ผู้บันทึก
+  approvedBy          String?   @map("approved_by")       // user_id ผู้อนุมัติ
+  approvedAt          DateTime? @map("approved_at")
+  rejectionReason     String?   @map("rejection_reason") @db.Text
+
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@index([projectBudgetId])
+  @@index([category])
+  @@index([status])
+  @@index([transactionDate])
+  @@index([createdBy])
+  @@index([projectBudgetId, status])
+  @@map("budget_transaction")
+}
+
+// =============================================
+// INDICATOR SYSTEM (Sub-indicators Support)
+// =============================================
+
+model Indicator {
+  id          String   @id @default(uuid())
+  code        String   @unique // WP_1, WP_2, ET_1, etc.
+  name        String   // ชื่อตัวชี้วัด
+  description String   @db.Text // คำอธิบาย
+  category    String   // หมวดหมู่ (การพัฒนาการสอน, ความเป็นมืออาชีพ)
+  aspect      String   // ด้าน (วิชาชีพ, สังคม, คุณลักษณะส่วนบุคคล)
+  order       Int      @default(0) // ลำดับการแสดงผล
+  isActive    Boolean  @default(true) @map("is_active")
+  
+  // Relations
+  subIndicators SubIndicator[] @relation("IndicatorSubIndicators")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@map("indicators")
+  @@index([code])
+  @@index([aspect])
+  @@index([isActive])
+}
+
+model SubIndicator {
+  id          String   @id @default(uuid())
+  code        String   @unique // WP_1.1, WP_1.2, ET_P1.1, etc.
+  name        String   // ชื่อตัวชี้วัดย่อย
+  description String   @db.Text // คำอธิบาย
+  requirements String  @db.Text // สิ่งที่ต้องปฏิบัติ
+  assessmentMethods String? @db.Text @map("assessment_methods") // วิธีการประเมิน
+  evidenceExamples Json? @map("evidence_examples") // ตัวอย่างเอกสารหลักฐาน (Array)
+  order       Int      @default(0) // ลำดับการแสดงผล
+  
+  // Relations
+  indicatorId String   @map("indicator_id")
+  indicator   Indicator @relation("IndicatorSubIndicators", fields: [indicatorId], references: [id], onDelete: Cascade)
+  
+  isActive    Boolean  @default(true) @map("is_active")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@map("sub_indicators")
+  @@index([indicatorId])
+  @@index([code])
+  @@index([isActive])
 }

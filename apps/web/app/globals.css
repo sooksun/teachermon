@@ -1,5 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap');
+/* Fonts loaded via next/font in layout.tsx for better performance */
 
 @tailwind base;
 @tailwind components;
@@ -35,7 +34,83 @@ body {
   }
 }
 
-/* Ant Design DatePicker height override */
+/* React Toastify Custom Styles */
+.toast-confirm,
+.toast-confirm-delete {
+  min-width: 320px;
+  max-width: 400px;
+}
+
+.toast-confirm button,
+.toast-confirm-delete button {
+  outline: none;
+  border: none;
+  cursor: pointer;
+}
+
+.toast-confirm button:focus,
+.toast-confirm-delete button:focus {
+  outline: 2px solid rgba(59, 130, 246, 0.5);
+  outline-offset: 2px;
+}
+
+/* Input, Select, Textarea - Darker text for better readability */
+@layer base {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"],
+  select,
+  textarea {
+    @apply text-gray-900 font-medium;
+  }
+
+  /* Placeholder styling */
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-gray-500 font-normal;
+  }
+
+  /* Select dropdown text */
+  select option {
+    @apply text-gray-900 font-medium;
+  }
+
+  /* Disabled state */
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    @apply text-gray-600 bg-gray-50 cursor-not-allowed;
+  }
+}
+
+/* Ant Design Components - Better readability */
 .ant-picker {
   height: 40px;
+}
+
+.ant-picker-input > input {
+  @apply text-gray-900 font-medium text-base;
+}
+
+.ant-picker-input > input::placeholder {
+  @apply text-gray-500 font-normal;
+}
+
+.ant-select-selection-item {
+  @apply text-gray-900 font-medium;
+}
+
+.ant-input {
+  @apply text-gray-900 font-medium;
+}
+
+.ant-input::placeholder {
+  @apply text-gray-500 font-normal;
 }

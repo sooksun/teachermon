@@ -1,0 +1,68 @@
+# TeacherMon – Docker Compose for Ubuntu 24
+# Uses Supabase (no local Postgres). Copy .env.docker.example to .env and configure.
+#
+# Run:
+#   cp .env.docker.example .env   # edit .env with your Supabase DATABASE_URL, etc.
+#   docker compose -f docker-compose.ubuntu.yml up -d
+#
+# App: http://localhost:3000   API: http://localhost:3001/api
+#
+# Optional reverse proxy (single entry on :80):
+#   docker compose -f docker-compose.ubuntu.yml --profile nginx up -d
+#   Then set NEXT_PUBLIC_API_URL=http://localhost/api and rebuild web.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api.ubuntu
+    image: teachermon-api:ubuntu
+    container_name: teachermon-api
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      # Override from .env if needed:
+      # DATABASE_URL, JWT_SECRET, CORS_ORIGIN
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3001/api/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web.ubuntu
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+    image: teachermon-web:ubuntu
+    container_name: teachermon-web
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: teachermon-nginx
+    profiles:
+      - nginx
+    volumes:
+      - ./nginx/nginx.docker.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped

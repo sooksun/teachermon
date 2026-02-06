@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { MainLayout } from '@/components/layout/main-layout';
 import { apiClient } from '@/lib/api-client';
 import Link from 'next/link';
+import { formatThaiDate } from '@/lib/utils';
 
 export default function PLCPage() {
   const { data, isLoading } = useQuery({
@@ -56,7 +57,7 @@ export default function PLCPage() {
                           {activity.teacher.fullName} • {activity.teacher.school.schoolName}
                         </p>
                         <p className="mt-1 text-xs text-gray-500">
-                          {new Date(activity.plcDate).toLocaleDateString('th-TH')} • บทบาท: {activity.role}
+                          {formatThaiDate(activity.plcDate)} • บทบาท: {activity.role}
                         </p>
 
                         {activity.takeaway && (

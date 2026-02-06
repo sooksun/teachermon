@@ -76,7 +76,7 @@ export default function NewJournalPage() {
           >
             &larr; กลับไปหน้า Journals
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">เขียน Reflective Journal</h1>
+          <h1 className="text-2xl font-bold text-gray-900">เขียนบันทึกการสะท้อนตนเอง</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow">

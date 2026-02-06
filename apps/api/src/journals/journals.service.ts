@@ -6,26 +6,34 @@ import { Prisma } from '@teachermon/database';
 export class JournalsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(teacherId?: string) {
+  async findAll(teacherId?: string, page = 1, limit = 20) {
     const where: Prisma.ReflectiveJournalWhereInput = teacherId ? { teacherId } : {};
+    const skip = (page - 1) * limit;
 
-    return this.prisma.reflectiveJournal.findMany({
-      where,
-      include: {
-        teacher: {
-          select: {
-            id: true,
-            fullName: true,
-            school: {
-              select: {
-                schoolName: true,
+    const [data, total] = await Promise.all([
+      this.prisma.reflectiveJournal.findMany({
+        where,
+        include: {
+          teacher: {
+            select: {
+              id: true,
+              fullName: true,
+              school: {
+                select: {
+                  schoolName: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { month: 'desc' },
-    });
+        orderBy: { month: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.reflectiveJournal.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {

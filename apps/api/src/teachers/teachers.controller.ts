@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('teachers')
 @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard) // TODO: Enable after login is working
+@UseGuards(JwtAuthGuard)
 @Controller('teachers')
 export class TeachersController {
   constructor(private teachersService: TeachersService) {}
@@ -36,7 +36,7 @@ export class TeachersController {
 
   @ApiOperation({ summary: 'Get teacher by ID' })
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id') id: string): Promise<any> {
     return this.teachersService.findOne(id);
   }
 

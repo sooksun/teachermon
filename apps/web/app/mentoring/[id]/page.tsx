@@ -6,6 +6,7 @@ import { MainLayout } from '@/components/layout/main-layout';
 import { apiClient } from '@/lib/api-client';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
+import { formatThaiDate } from '@/lib/utils';
 
 export default function MentoringDetailPage() {
   const params = useParams();
@@ -170,11 +171,7 @@ export default function MentoringDetailPage() {
               <div>
                 <h3 className="text-sm font-medium text-gray-500 mb-2">วันที่ลงพื้นที่</h3>
                 <p className="text-lg font-semibold text-gray-900">
-                  {new Date(visit.visitDate).toLocaleDateString('th-TH', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
+                  {formatThaiDate(visit.visitDate, 'D MMMM BBBB')}
                 </p>
               </div>
 

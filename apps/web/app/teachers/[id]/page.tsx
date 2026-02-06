@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api-client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { REGIONS, TEACHER_STATUS } from '@teachermon/shared';
+import { formatThaiDate } from '@/lib/utils';
 
 export default function TeacherDetailPage() {
   const params = useParams();
@@ -94,7 +95,7 @@ export default function TeacherDetailPage() {
                 <div>
                   <dt className="text-sm font-medium text-gray-500">วันเกิด</dt>
                   <dd className="mt-1 text-sm text-gray-900">
-                    {new Date(teacher.birthDate).toLocaleDateString('th-TH')}
+                    {formatThaiDate(teacher.birthDate)}
                   </dd>
                 </div>
                 <div>
@@ -116,7 +117,7 @@ export default function TeacherDetailPage() {
                 <div>
                   <dt className="text-sm font-medium text-gray-500">วันที่บรรจุ</dt>
                   <dd className="mt-1 text-sm text-gray-900">
-                    {new Date(teacher.appointmentDate).toLocaleDateString('th-TH')}
+                    {formatThaiDate(teacher.appointmentDate)}
                   </dd>
                 </div>
                 <div>
@@ -207,7 +208,7 @@ export default function TeacherDetailPage() {
                           {visit.visitType}
                         </span>
                         <span className="text-xs text-gray-500">
-                          {new Date(visit.visitDate).toLocaleDateString('th-TH')}
+                          {formatThaiDate(visit.visitDate)}
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-gray-600">ผู้สังเกต: {visit.observer}</p>

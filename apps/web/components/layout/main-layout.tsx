@@ -3,20 +3,54 @@
 import { Sidebar } from './sidebar';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, _hasHydrated, setHasHydrated } = useAuth();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+
+  // Ensure we're on client side and check hydration
+  useEffect(() => {
+    setMounted(true);
+    
+    // Fallback: If Zustand hasn't hydrated after 200ms, force it
+    if (!_hasHydrated) {
+      const timeout = setTimeout(() => {
+        if (!useAuth.getState()._hasHydrated) {
+          setHasHydrated(true);
+        }
+      }, 200);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [_hasHydrated, setHasHydrated]);
 
   useEffect(() => {
+    if (!mounted) return;
+    if (!_hasHydrated) return;
     if (!user) {
-      router.push('/login');
+      router.replace('/login');
     }
-  }, [user, router]);
+  }, [mounted, _hasHydrated, user, router]);
+
+  if (!mounted || !_hasHydrated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary-600 border-r-transparent" />
+          <p className="mt-3 text-sm text-gray-600">กำลังโหลด...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-100">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary-600 border-r-transparent" />
+      </div>
+    );
   }
 
   return (

@@ -52,3 +52,14 @@ Thumbs.db
 *.tmp
 *.temp
 test-ai-api.js
+query.sql
+
+# Uploaded files
+apps/api/uploads/
+uploads/
+
+# Data
+data/
+
+# Test scripts
+apps/api/test-retention-api.ps1

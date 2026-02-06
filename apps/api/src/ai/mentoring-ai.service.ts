@@ -29,6 +29,13 @@ export class MentoringAIService {
     visitId: string,
     userId: string,
   ): Promise<MentoringReportResult> {
+    // ตรวจสอบว่า AI enabled หรือไม่
+    if (!this.geminiAI.isAIEnabled()) {
+      const errorMsg = 'AI is not enabled. Please configure GEMINI_API_KEY in .env file.';
+      this.logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
     // 1. ดึงข้อมูลการเยี่ยม
     const visit = await this.prisma.mentoringVisit.findUnique({
       where: { id: visitId },
@@ -43,7 +50,7 @@ export class MentoringAIService {
       throw new Error('Visit not found');
     }
 
-    // 2. วิเคราะห์และสรุปด้วย Gemini AI
+    // 2. วิเคราะห์และสรุปด้วย Gemini AI (จะ throw error ถ้าเกิดปัญหา)
     const reportSections = await this.analyzeVisitWithAI(visit);
 
     // 3. สร้างรายงานฉบับเต็ม

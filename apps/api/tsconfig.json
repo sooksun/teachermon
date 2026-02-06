@@ -10,7 +10,8 @@
     "target": "ES2021",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
+    "baseUrl": "../../",
+    "rootDir": "../../",
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": false,
@@ -19,10 +20,10 @@
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
-      "@teachermon/database": ["../../packages/database/index.ts"],
-      "@teachermon/shared": ["../../packages/shared/src/index.ts"]
+      "@teachermon/database": ["packages/database/index.ts"],
+      "@teachermon/shared": ["packages/shared/src/index.ts"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../../packages/database/**/*", "../../packages/shared/**/*"],
   "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
 }

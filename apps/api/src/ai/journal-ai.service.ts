@@ -32,6 +32,13 @@ export class JournalAIService {
     userId: string,
     context?: { indicatorCode?: string; focusArea?: string },
   ): Promise<JournalImproveResult> {
+    // ตรวจสอบว่า AI enabled หรือไม่
+    if (!this.geminiAI.isAIEnabled()) {
+      const errorMsg = 'AI is not enabled. Please configure GEMINI_API_KEY in .env file.';
+      this.logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
     // 1. ตรวจ PDPA ก่อน
     const pdpaCheck = await this.pdpaScanner.checkText(
       input,
@@ -44,7 +51,7 @@ export class JournalAIService {
       this.logger.warn(`HIGH PDPA RISK detected in journal input by user ${userId}`);
     }
 
-    // 2. เรียกใช้ Gemini AI
+    // 2. เรียกใช้ Gemini AI (จะ throw error ถ้าเกิดปัญหา)
     const improvedText = await this.geminiAI.improveLanguage(input, context);
 
     // 3. สร้างข้อเสนอแนะ
@@ -87,52 +94,6 @@ export class JournalAIService {
     });
 
     return prompts;
-  }
-
-  /**
-   * เรียกใช้ AI Model เพื่อปรับปรุงภาษา
-   * (Mock function - ในการใช้จริงจะเรียก API)
-   */
-  private async callAIForImprovement(
-    input: string,
-    context?: { indicatorCode?: string; focusArea?: string },
-  ): Promise<string> {
-    // TODO: ในการใช้จริง เรียก OpenAI/Claude API
-    // const prompt = `ปรับภาษานี้ให้เป็นทางการเหมาะสำหรับบันทึกครู:
-    // "${input}"
-    // 
-    // บริบท: ${JSON.stringify(context)}
-    // 
-    // เงื่อนไข:
-    // - ใช้ภาษาไทยที่สุภาพ เป็นทางการ
-    // - คงความหมายเดิม
-    // - ไม่ระบุชื่อนักเรียน (ใช้ "นักเรียน ก." แทน)
-    // - ยาวประมาณ 3-5 ประโยค`;
-
-    // Mock response
-    const improved = this.mockImprove(input);
-    return improved;
-  }
-
-  /**
-   * Mock improvement (สำหรับ demo - จะถูกแทนที่ด้วย AI จริง)
-   */
-  private mockImprove(input: string): string {
-    // กฎง่ายๆ สำหรับ demo
-    let improved = input
-      .replace(/วันนี้/g, 'ในวันนี้')
-      .replace(/เด็กๆ/g, 'นักเรียน')
-      .replace(/เด็ก/g, 'นักเรียน')
-      .replace(/สอน/g, 'จัดการเรียนรู้')
-      .replace(/ดี/g, 'เป็นไปด้วยดี')
-      .replace(/ไม่ดี/g, 'ยังต้องพัฒนา');
-
-    // เพิ่มการเปิด-ปิดที่เป็นทางการ
-    if (!improved.startsWith('ในวันนี้')) {
-      improved = 'ในวันนี้ ' + improved;
-    }
-
-    return improved + ' โดยภาพรวมการจัดการเรียนรู้เป็นไปตามวัตถุประสงค์ที่กำหนดไว้';
   }
 
   /**

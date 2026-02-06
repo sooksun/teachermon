@@ -45,7 +45,7 @@ export default function TeachersPage() {
             </p>
           </div>
           <Link
-            href="/teachers/new"
+            href="/teachers/create"
             className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
           >
             + เพิ่มครูใหม่

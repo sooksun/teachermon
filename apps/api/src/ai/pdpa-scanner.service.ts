@@ -220,7 +220,7 @@ export class PDPAScannerService {
   /**
    * ดึงประวัติการตรวจ PDPA
    */
-  async getAuditHistory(sourceType: string, sourceId: string) {
+  async getAuditHistory(sourceType: string, sourceId: string): Promise<any[]> {
     return this.prisma.pDPAAudit.findMany({
       where: { sourceType, sourceId },
       orderBy: { createdAt: 'desc' },
@@ -231,7 +231,7 @@ export class PDPAScannerService {
   /**
    * ยืนยันว่าได้รับทราบความเสี่ยง PDPA แล้ว
    */
-  async acknowledgeRisk(auditId: string, userId: string) {
+  async acknowledgeRisk(auditId: string, userId: string): Promise<any> {
     return this.prisma.pDPAAudit.update({
       where: { id: auditId },
       data: {
