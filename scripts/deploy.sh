@@ -87,9 +87,11 @@ elif command -v mysql >/dev/null 2>&1; then
         || warn "ไม่สามารถสร้าง database ได้ — อาจมีอยู่แล้วหรือสิทธิ์ไม่พอ"
 fi
 
-# 6. Create uploads directory
+# 6. Create uploads directory (API container รันเป็น user node = uid 1000)
 mkdir -p uploads
-log "สร้างโฟลเดอร์ uploads/"
+# ให้ container เขียนไฟล์ได้ — ไม่ chown จะได้ EACCES ตอนอัปโหลด Portfolio
+sudo chown -R 1000:1000 uploads 2>/dev/null || chown -R 1000:1000 uploads 2>/dev/null || true
+log "โฟลเดอร์ uploads/ พร้อม (owner 1000:1000 สำหรับ container)"
 
 # ---------- DEPLOYMENT ----------
 FRESH="${1:-}"

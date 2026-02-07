@@ -21,17 +21,20 @@ const EVIDENCE_TYPE_LABELS: Record<string, string> = {
   OTHER: 'อื่นๆ',
 };
 
-// Helper to normalize file path
+// Helper to normalize file path (backend returns e.g. /api/uploads/xxx.jpg)
 const getFileUrl = (fileUrl: string | null | undefined): string => {
   if (!fileUrl) return '';
-  
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
     return fileUrl;
   }
-  
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  // ถ้า path ขึ้นต้นด้วย / ใช้ origin + path (กัน /api ซ้ำเมื่อ apiBase จบด้วย /api)
+  if (fileUrl.startsWith('/')) {
+    const origin = apiBase.replace(/\/api\/?$/, '') || apiBase;
+    return `${origin}${fileUrl}`;
+  }
   const filename = fileUrl.split('/').pop() || fileUrl.split('\\').pop() || fileUrl;
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-  return `${apiUrl}/api/uploads/${filename}`;
+  return `${apiBase.replace(/\/api\/?$/, '') || apiBase}/api/uploads/${filename}`;
 };
 
 // Helper to get YouTube thumbnail

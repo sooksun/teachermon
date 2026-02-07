@@ -22,6 +22,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
+    # โฟลเดอร์ uploads ต้อง chown 1000:1000 บน host (user node ใน container)
+    # รันครั้งเดียว: sudo chown -R 1000:1000 uploads
     volumes:
       - ./uploads:/app/apps/api/uploads
     ports:
