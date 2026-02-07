@@ -67,7 +67,12 @@ COPY packages/shared/package.json ./packages/shared/
 # Copy workspace root
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 
-# Install production deps
+# Copy database package (needed by shared at runtime)
+COPY --from=build /app/packages/database/index.js ./packages/database/index.js
+COPY --from=build /app/packages/database/index.d.ts ./packages/database/index.d.ts
+COPY packages/database/package.json ./packages/database/
+
+# Install production deps (includes next in apps/web)
 RUN corepack enable && corepack prepare pnpm@9 --activate \
     && pnpm install --frozen-lockfile --prod
 
@@ -77,4 +82,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
 USER node
 EXPOSE 3000
 
-CMD ["npx", "--yes", "next", "start", "-p", "3000", "--dir", "apps/web"]
+WORKDIR /app/apps/web
+CMD ["node_modules/.bin/next", "start", "-p", "3000"]
