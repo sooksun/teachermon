@@ -129,9 +129,9 @@ fi
 
 # ---------- RUN PRISMA MIGRATION ----------
 info "Running Prisma Migrate Deploy..."
-# ใช้ prisma@5.22.0 ตรงกับ package.json — ห้ามใช้ npx เปล่า เพราะจะดาวน์โหลด v7 ที่ breaking
+# prisma@5.22.0 ถูกติดตั้งไว้ใน Docker image แล้ว — ใช้ node_modules/.bin/prisma โดยตรง
 docker exec teachermon-api \
-    npx prisma@5.22.0 migrate deploy --schema=packages/database/prisma/schema.prisma \
+    node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma \
     2>&1 || warn "Migration ข้าม (อาจ migrate แล้ว)"
 log "Database migration เสร็จ"
 

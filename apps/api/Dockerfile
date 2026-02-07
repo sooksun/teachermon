@@ -63,7 +63,8 @@ RUN pnpm install --frozen-lockfile --prod
 
 # Copy database package (index.js, prisma schema, etc.)
 COPY packages/database ./packages/database
-RUN cd packages/database && npx prisma@5.22.0 generate
+# ติดตั้ง prisma CLI ไว้ใน production image เพื่อให้ deploy script ใช้ migrate ได้โดยไม่ต้องดาวน์โหลดใหม่
+RUN pnpm add -w prisma@5.22.0 && npx prisma@5.22.0 generate
 
 # Copy built shared package
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
