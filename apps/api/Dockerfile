@@ -65,8 +65,11 @@ RUN pnpm install --frozen-lockfile --prod
 COPY packages/database ./packages/database
 # ติดตั้ง prisma CLI ไว้ใน production image เพื่อให้ deploy script ใช้ migrate ได้โดยไม่ต้องดาวน์โหลดใหม่
 RUN pnpm add -w prisma@5.22.0
-# Generate prisma client โดยระบุ path ให้ถูกต้อง
-RUN cd packages/database && npx prisma@5.22.0 generate
+
+# Explicitly install client in database package and generate using root cli
+RUN cd packages/database && \
+    pnpm add @prisma/client@5.22.0 && \
+    ../../node_modules/.bin/prisma generate
 
 # Copy built shared package
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
