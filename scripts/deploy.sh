@@ -109,7 +109,7 @@ log "Containers กำลังทำงาน"
 # ---------- WAIT FOR API TO BE READY ----------
 info "รอ API พร้อม..."
 RETRIES=30
-until curl -sf http://localhost:3001/api/health >/dev/null 2>&1; do
+until curl -sf http://localhost:9904/api/health >/dev/null 2>&1; do
     RETRIES=$((RETRIES - 1))
     if [ $RETRIES -eq 0 ]; then
         warn "API ยังไม่พร้อมหลังจากรอ 60 วินาที"
@@ -133,13 +133,11 @@ log "Database migration เสร็จ"
 info "ตรวจสอบ Health Check..."
 sleep 3
 
-API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/api/health 2>/dev/null || echo "000")
-WEB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null || echo "000")
-NGINX_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:80 2>/dev/null || echo "000")
+API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9904/api/health 2>/dev/null || echo "000")
+WEB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9903 2>/dev/null || echo "000")
 
 [ "$API_STATUS" = "200" ] || [ "$API_STATUS" = "201" ] && log "API   ✔ (HTTP $API_STATUS)" || warn "API   ✘ (HTTP $API_STATUS)"
 [ "$WEB_STATUS" = "200" ] || [ "$WEB_STATUS" = "302" ] && log "Web   ✔ (HTTP $WEB_STATUS)" || warn "Web   ✘ (HTTP $WEB_STATUS)"
-[ "$NGINX_STATUS" = "200" ] || [ "$NGINX_STATUS" = "302" ] && log "Nginx ✔ (HTTP $NGINX_STATUS)" || warn "Nginx ✘ (HTTP $NGINX_STATUS)"
 
 # ---------- SUMMARY ----------
 echo ""
@@ -148,10 +146,10 @@ echo ""
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 info "URLs (LAN):"
-info "  Web:      http://192.168.1.4"
-info "  API:      http://192.168.1.4/api"
-info "  Swagger:  http://192.168.1.4/api/docs"
-info "  Health:   http://192.168.1.4/api/health"
+info "  Web:      http://192.168.1.4:9903"
+info "  API:      http://192.168.1.4:9904/api"
+info "  Swagger:  http://192.168.1.4:9904/api/docs"
+info "  Health:   http://192.168.1.4:9904/api/health"
 echo ""
 info "Useful commands:"
 info "  ดู logs:      docker compose -f $COMPOSE_FILE -p $PROJECT_NAME logs -f"
