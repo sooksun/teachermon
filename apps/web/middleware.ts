@@ -22,6 +22,7 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:ico|png|jpg|jpeg|gif|webp|svg|webmanifest)$).*)',
+    // uploads — public route สำหรับเสิร์ฟไฟล์รูปภาพ/PDF/เอกสาร (ไม่ต้อง auth)
+    '/((?!api|uploads|_next/static|_next/image|favicon.ico|.*\\.(?:ico|png|jpg|jpeg|gif|webp|svg|webmanifest)$).*)',
   ],
 };

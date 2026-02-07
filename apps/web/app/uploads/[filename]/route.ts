@@ -20,7 +20,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 // Uploads directory — mounted via Docker volume
 // Docker: /app/uploads (mapped from host ./uploads)
-// Local dev: ../../apps/api/uploads (relative to web app)
+// Local dev: ../../api/uploads (relative to web app)
 function getUploadsDir(): string {
   const dockerPath = '/app/uploads';
   const localPath = path.resolve(process.cwd(), '..', 'api', 'uploads');
@@ -34,11 +34,12 @@ function getUploadsDir(): string {
   }
 }
 
+// Next.js 14 — params is NOT a Promise
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ filename: string }> }
+  context: { params: { filename: string } },
 ) {
-  const { filename } = await params;
+  const filename = context.params.filename;
 
   // Security: only allow basename (no path traversal)
   const safeName = path.basename(filename);
@@ -66,7 +67,7 @@ export async function GET(
     const ext = path.extname(safeName).toLowerCase();
     const contentType = CONTENT_TYPES[ext] || 'application/octet-stream';
 
-    // Return with cache headers
+    // Return with cache headers (1 hour browser cache)
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {

@@ -93,6 +93,11 @@ mkdir -p uploads
 sudo chown -R 1000:1000 uploads 2>/dev/null || chown -R 1000:1000 uploads 2>/dev/null || true
 log "โฟลเดอร์ uploads/ พร้อม (owner 1000:1000 สำหรับ container)"
 
+# ---------- GIT PULL (ดึง code ล่าสุดก่อน build) ----------
+info "ดึง code ล่าสุดจาก Git..."
+git pull origin main 2>&1 || warn "git pull ล้มเหลว — ใช้ code ที่มีอยู่แทน"
+log "Code เป็นเวอร์ชันล่าสุดแล้ว"
+
 # ---------- DEPLOYMENT ----------
 FRESH="${1:-}"
 
@@ -104,11 +109,16 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT_NAME" down
 # Fallback: ถ้า compose down ไม่ได้ลบจริง ให้ rm -f ตรงๆ
 docker rm -f teachermon-api teachermon-web 2>/dev/null || true
 
-info "กำลัง build & deploy..."
+info "กำลัง build (--no-cache) & deploy..."
 docker compose -f "$COMPOSE_FILE" \
     --env-file "$ENV_FILE" \
     -p "$PROJECT_NAME" \
-    up -d --build --remove-orphans
+    build --no-cache
+
+docker compose -f "$COMPOSE_FILE" \
+    --env-file "$ENV_FILE" \
+    -p "$PROJECT_NAME" \
+    up -d --remove-orphans
 
 log "Containers กำลังทำงาน"
 
