@@ -61,9 +61,8 @@ COPY packages/shared/package.json ./packages/shared/
 # Install production dependencies
 RUN pnpm install --frozen-lockfile --prod
 
-# Copy Prisma schema and generate client in production node_modules
-COPY packages/database/prisma ./packages/database/prisma
-COPY packages/database/package.json ./packages/database/
+# Copy database package (index.js, prisma schema, etc.)
+COPY packages/database ./packages/database
 RUN cd packages/database && npx prisma@5.22.0 generate
 
 # Copy built shared package
