@@ -116,26 +116,32 @@ export class JournalAIService {
       this.logger.warn(`HIGH PDPA RISK detected in journal multi-field input by user ${userId}`);
     }
 
-    // 2. ปรับภาษาแต่ละช่อง
+    // 2. ปรับภาษาทุกช่องแบบ parallel (พร้อมกัน) เพื่อลดเวลา
     const improvedFields: Record<string, string> = {};
     const allSuggestions: string[] = [];
 
-    for (const [key, value] of Object.entries(fields)) {
-      if (!value || value.trim().length < 5) continue;
+    const fieldEntries = Object.entries(fields).filter(
+      ([, value]) => value && value.trim().length >= 5,
+    );
 
-      try {
+    const results = await Promise.allSettled(
+      fieldEntries.map(async ([key, value]) => {
         const improved = await this.geminiAI.improveLanguage(value, {
           ...context,
           focusArea: fieldLabels[key] || key,
         });
-        improvedFields[key] = improved;
+        return { key, value, improved };
+      }),
+    );
 
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        const { key, value, improved } = result.value;
+        improvedFields[key] = improved;
         const fieldSuggestions = this.generateImprovementSuggestions(value, improved);
         allSuggestions.push(...fieldSuggestions.slice(0, 1));
-      } catch (err) {
-        this.logger.error(`Failed to improve field ${key}: ${err}`);
-        // ข้ามช่องที่ error ไม่ต้องหยุดทั้งหมด
-        improvedFields[key] = value;
+      } else {
+        this.logger.error(`Failed to improve field: ${result.reason}`);
       }
     }
 

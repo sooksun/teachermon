@@ -82,7 +82,7 @@ export function AIJournalHelper({ fields, onFieldsImproved, indicatorCode = 'WP.
       const response = await apiClient.post('/journals/ai/improve-language', {
         fields: filledFields,
         indicatorCode,
-      });
+      }, { timeout: 60000 }); // 60 วินาที สำหรับ AI หลายช่อง
 
       const improved = response.data.improvedFields || {};
       onFieldsImproved(improved);
