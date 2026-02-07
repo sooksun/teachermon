@@ -28,13 +28,26 @@ const getFileUrl = (fileUrl: string | null | undefined): string => {
     return fileUrl;
   }
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-  // ถ้า path ขึ้นต้นด้วย / ใช้ origin + path (กัน /api ซ้ำเมื่อ apiBase จบด้วย /api)
+  const origin = apiBase.replace(/\/api\/?$/, '') || apiBase;
+  // ดึงเฉพาะชื่อไฟล์ที่ใช้โหลดได้ (UUID.ext) กรณี response มี encoding ผิด
+  const standardNameMatch = fileUrl.match(/([a-f0-9-]{36}\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx))/i);
+  const filename = standardNameMatch ? standardNameMatch[1] : (fileUrl.split('/').pop() || fileUrl.split('\\').pop() || fileUrl);
   if (fileUrl.startsWith('/')) {
-    const origin = apiBase.replace(/\/api\/?$/, '') || apiBase;
-    return `${origin}${fileUrl}`;
+    return `${origin}/api/uploads/${filename}`;
   }
-  const filename = fileUrl.split('/').pop() || fileUrl.split('\\').pop() || fileUrl;
-  return `${apiBase.replace(/\/api\/?$/, '') || apiBase}/api/uploads/${filename}`;
+  return `${origin}/api/uploads/${filename}`;
+};
+
+// ชื่อแสดง: ถ้า originalFilename เป็น mojibake ใช้ fallback
+const getDisplayFilename = (item: any): string => {
+  const raw = item?.originalFilename || item?.standardFilename || '';
+  const hasMojibake = /à¸|Ã|à¹|àº|à»|à¼|à½/.test(raw) || (raw.length > 0 && /[\uFFFD]/.test(raw));
+  if (hasMojibake && item?.fileUrl) {
+    const extMatch = item.fileUrl.match(/\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx)$/i);
+    const ext = extMatch ? extMatch[1] : 'ไฟล์';
+    return ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'gif' || ext === 'webp' ? 'รูปภาพ' : `ไฟล์.${ext}`;
+  }
+  return raw || 'ไฟล์';
 };
 
 // Helper to get YouTube thumbnail
@@ -67,9 +80,10 @@ const getVideoThumbnail = (videoUrl: string, platform: string): string | null =>
 const getFileType = (item: any): 'image' | 'pdf' | 'video' | 'other' => {
   if (item.itemType === 'VIDEO_LINK') return 'video';
   
-  const filename = item.originalFilename || item.standardFilename || '';
   const mimeType = item.mimeType || '';
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const fromPath = item.fileUrl?.match(/\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx)$/i)?.[1]?.toLowerCase();
+  const filename = item.originalFilename || item.standardFilename || '';
+  const ext = fromPath || filename.split('.').pop()?.toLowerCase() || '';
   
   if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
     return 'image';
@@ -102,6 +116,7 @@ export function PortfolioItemCard({ item, onView, onDelete }: PortfolioItemCardP
     try {
       const token = getToken();
       const response = await fetch(fileUrl, {
+        credentials: 'include',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
@@ -157,7 +172,7 @@ export function PortfolioItemCard({ item, onView, onDelete }: PortfolioItemCardP
         <div className="w-full h-32 bg-gray-100 relative overflow-hidden">
           <img
             src={thumbnailUrl}
-            alt={item.originalFilename || item.videoTitle || 'Preview'}
+            alt={getDisplayFilename(item) || item.videoTitle || 'Preview'}
             className="w-full h-full object-cover"
           />
           {isVideo && (
@@ -231,7 +246,7 @@ export function PortfolioItemCard({ item, onView, onDelete }: PortfolioItemCardP
         {/* Header */}
         <div className="mb-2">
           <h3 className="text-sm font-semibold text-gray-900 line-clamp-1">
-            {isVideo ? item.videoTitle : item.originalFilename || item.standardFilename}
+            {isVideo ? item.videoTitle : getDisplayFilename(item)}
           </h3>
           <p className="text-xs text-gray-500">
             {EVIDENCE_TYPE_LABELS[item.evidenceType] || item.evidenceType}

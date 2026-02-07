@@ -28,13 +28,21 @@ const getFileUrl = (fileUrl: string | null | undefined): string => {
     return fileUrl;
   }
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-  // ถ้า path ขึ้นต้นด้วย / ใช้ origin + path (กัน /api ซ้ำเมื่อ apiBase จบด้วย /api)
-  if (fileUrl.startsWith('/')) {
-    const origin = apiBase.replace(/\/api\/?$/, '') || apiBase;
-    return `${origin}${fileUrl}`;
+  const origin = apiBase.replace(/\/api\/?$/, '') || apiBase;
+  const standardNameMatch = fileUrl.match(/([a-f0-9-]{36}\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx))/i);
+  const filename = standardNameMatch ? standardNameMatch[1] : (fileUrl.split('/').pop() || fileUrl.split('\\').pop() || fileUrl);
+  return `${origin}/api/uploads/${filename}`;
+};
+
+const getDisplayFilename = (item: any): string => {
+  const raw = item?.originalFilename || item?.standardFilename || '';
+  const hasMojibake = /à¸|Ã|à¹|àº|à»|à¼|à½/.test(raw) || (raw.length > 0 && /[\uFFFD]/.test(raw));
+  if (hasMojibake && item?.fileUrl) {
+    const extMatch = item.fileUrl.match(/\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx)$/i);
+    const ext = extMatch ? extMatch[1] : 'ไฟล์';
+    return ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'gif' || ext === 'webp' ? 'รูปภาพ' : `ไฟล์.${ext}`;
   }
-  const filename = fileUrl.split('/').pop() || fileUrl.split('\\').pop() || fileUrl;
-  return `${apiBase.replace(/\/api\/?$/, '') || apiBase}/api/uploads/${filename}`;
+  return raw || 'ไฟล์';
 };
 
 // Helper to get video embed URL
@@ -84,9 +92,10 @@ const getVideoEmbedUrl = (videoUrl: string, platform: string): string | null => 
 const getFileType = (item: any): 'image' | 'pdf' | 'video' | 'other' => {
   if (item.itemType === 'VIDEO_LINK') return 'video';
   
-  const filename = item.originalFilename || item.standardFilename || '';
   const mimeType = item.mimeType || '';
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const fromPath = item.fileUrl?.match(/\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx)$/i)?.[1]?.toLowerCase();
+  const filename = item?.originalFilename || item?.standardFilename || '';
+  const ext = fromPath || filename.split('.').pop()?.toLowerCase() || '';
   
   if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
     return 'image';
@@ -122,6 +131,7 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
     try {
       const token = getToken();
       const response = await fetch(fileUrl, {
+        credentials: 'include',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
@@ -168,7 +178,7 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
     if (fileBlobUrl) {
       const link = document.createElement('a');
       link.href = fileBlobUrl;
-      link.download = item.originalFilename || item.standardFilename || 'download';
+      link.download = getDisplayFilename(item) || 'download';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -254,7 +264,7 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
         <div className="flex items-center justify-center bg-gray-100 rounded-lg overflow-hidden">
           <img
             src={fileBlobUrl}
-            alt={item.originalFilename || 'Preview'}
+            alt={getDisplayFilename(item) || 'Preview'}
             className="max-w-full max-h-[60vh] object-contain"
           />
         </div>
@@ -268,7 +278,7 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
           <iframe
             src={fileBlobUrl}
             className="w-full h-[60vh]"
-            title={item.originalFilename || 'PDF Preview'}
+            title={getDisplayFilename(item) || 'PDF Preview'}
           />
         </div>
       );
@@ -297,7 +307,7 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
             <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
           </svg>
           <p className="text-sm text-gray-600 font-medium">
-            {item.originalFilename || item.standardFilename}
+            {getDisplayFilename(item)}
           </p>
           <p className="text-xs text-gray-500 mt-1">
             ไม่สามารถแสดงตัวอย่างไฟล์ประเภทนี้ได้
@@ -333,7 +343,7 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
               )}
               <div className="flex-1">
                 <h2 className="text-xl font-bold text-gray-900 mb-1">
-                  {isVideoLink ? item.videoTitle : item.originalFilename || item.standardFilename}
+                  {isVideoLink ? item.videoTitle : getDisplayFilename(item)}
                 </h2>
                 <p className="text-sm text-gray-500">
                   {EVIDENCE_TYPE_LABELS[item.evidenceType] || item.evidenceType}
