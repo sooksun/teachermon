@@ -57,15 +57,19 @@ export class JournalAIService {
     // 3. สร้างข้อเสนอแนะ
     const suggestions = this.generateImprovementSuggestions(input, improvedText);
 
-    // 4. บันทึก activity
-    await this.aiActivityService.logActivity({
-      userId,
-      actionType: 'JOURNAL_IMPROVE',
-      inputData: { original: input, context },
-      outputData: { improved: improvedText, suggestions },
-      modelUsed: this.geminiAI.getModelName(),
-      confidenceScore: 0.85,
-    });
+    // 4. บันทึก activity (ไม่ให้ error จาก logging ทำให้ response ล้มเหลว)
+    try {
+      await this.aiActivityService.logActivity({
+        userId,
+        actionType: 'JOURNAL_IMPROVE',
+        inputData: { original: input, context },
+        outputData: { improved: improvedText, suggestions },
+        modelUsed: this.geminiAI.getModelName(),
+        confidenceScore: 0.85,
+      });
+    } catch (logError) {
+      this.logger.warn(`Failed to log AI activity: ${logError}`);
+    }
 
     return {
       improvedText,
@@ -157,15 +161,19 @@ export class JournalAIService {
     // 4. ลบ suggestions ซ้ำ
     const uniqueSuggestions = [...new Set(allSuggestions)];
 
-    // 5. บันทึก activity
-    await this.aiActivityService.logActivity({
-      userId,
-      actionType: 'JOURNAL_IMPROVE_MULTI',
-      inputData: { originalFields: fields, context },
-      outputData: { improvedFields, suggestions: uniqueSuggestions },
-      modelUsed: this.geminiAI.getModelName(),
-      confidenceScore: 0.85,
-    });
+    // 5. บันทึก activity (ไม่ให้ error จาก logging ทำให้ response ล้มเหลว)
+    try {
+      await this.aiActivityService.logActivity({
+        userId,
+        actionType: 'JOURNAL_IMPROVE_MULTI',
+        inputData: { originalFields: fields, context },
+        outputData: { improvedFields, suggestions: uniqueSuggestions },
+        modelUsed: this.geminiAI.getModelName(),
+        confidenceScore: 0.85,
+      });
+    } catch (logError) {
+      this.logger.warn(`Failed to log AI activity: ${logError}`);
+    }
 
     return {
       improvedFields,

@@ -80,17 +80,27 @@ export class JournalsController {
       focusArea: body.focusArea,
     };
 
-    // รองรับแบบหลายช่อง (fields) 
-    if (body.fields && Object.keys(body.fields).length > 0) {
-      return this.journalAI.improveMultipleFields(body.fields, userId, context);
-    }
+    try {
+      // รองรับแบบหลายช่อง (fields) 
+      if (body.fields && Object.keys(body.fields).length > 0) {
+        return await this.journalAI.improveMultipleFields(body.fields, userId, context);
+      }
 
-    // รองรับแบบเดิม (text เดี่ยว) สำหรับ backward compatibility
-    if (body.text) {
-      return this.journalAI.improveLanguage(body.text, userId, context);
-    }
+      // รองรับแบบเดิม (text เดี่ยว) สำหรับ backward compatibility
+      if (body.text) {
+        return await this.journalAI.improveLanguage(body.text, userId, context);
+      }
 
-    return { improvedText: '', improvedFields: {}, suggestions: ['กรุณากรอกข้อมูลก่อนปรับภาษา'] };
+      return { improvedText: '', improvedFields: {}, suggestions: ['กรุณากรอกข้อมูลก่อนปรับภาษา'] };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown AI error';
+      return {
+        improvedText: body.text || '',
+        improvedFields: body.fields || {},
+        suggestions: [`เกิดข้อผิดพลาด: ${message}`],
+        error: true,
+      };
+    }
   }
 
   @ApiOperation({ summary: '[AI] แนะนำคำถามสะท้อนคิด' })
