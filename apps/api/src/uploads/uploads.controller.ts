@@ -9,12 +9,14 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import * as path from 'path';
 import * as fs from 'fs';
 
 @Controller('uploads')
+@SkipThrottle()
 @UseGuards(JwtAuthGuard)
 export class UploadsController {
   constructor(private readonly prisma: PrismaService) {}

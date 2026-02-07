@@ -35,17 +35,17 @@ import { HealthModule } from './health/health.module';
       ttl: 30000, // 30 seconds default TTL
       max: 100,   // Maximum number of items in cache
     }),
-    // Rate Limiting
+    // Rate Limiting — เพิ่ม limit เพราะผ่าน reverse proxy ทุก request เป็น IP เดียวกัน
     ThrottlerModule.forRoot([
       {
         name: 'default',
         ttl: 60000, // 1 minute
-        limit: 100, // 100 requests per minute
+        limit: 600, // 600 requests per minute (ผ่าน proxy ใช้ IP เดียว)
       },
       {
         name: 'strict',
         ttl: 60000, // 1 minute
-        limit: 10, // 10 requests per minute (for sensitive endpoints)
+        limit: 30, // 30 requests per minute (for sensitive endpoints)
       },
     ]),
     PrismaModule,
