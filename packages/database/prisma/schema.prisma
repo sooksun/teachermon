@@ -130,7 +130,8 @@ enum EvidenceType {
 }
 
 enum AIActionType {
-  JOURNAL_IMPROVE        // ปรับภาษา journal
+  JOURNAL_IMPROVE        // ปรับภาษา journal (ช่องเดียว)
+  JOURNAL_IMPROVE_MULTI  // ปรับภาษา journal (หลายช่อง)
   JOURNAL_SUGGEST        // แนะนำคำถามสะท้อนคิด
   PDPA_CHECK            // ตรวจ PDPA
   MENTORING_SUMMARY     // สรุปรายงานนิเทศ
