@@ -66,10 +66,9 @@ COPY packages/database ./packages/database
 # ติดตั้ง prisma CLI ไว้ใน production image เพื่อให้ deploy script ใช้ migrate ได้โดยไม่ต้องดาวน์โหลดใหม่
 RUN pnpm add -w prisma@5.22.0
 
-# Explicitly install client in database package and generate using root cli
-RUN cd packages/database && \
-    pnpm add @prisma/client@5.22.0 && \
-    ../../node_modules/.bin/prisma generate
+# Generate prisma client จาก root โดยชี้ไปที่ schema
+# วิธีนี้จะ update @prisma/client ที่อยู่ใน root node_modules
+RUN ./node_modules/.bin/prisma generate --schema=packages/database/prisma/schema.prisma
 
 # Copy built shared package
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
