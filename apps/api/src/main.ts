@@ -10,6 +10,16 @@ import compression from 'compression';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // กำหนด charset UTF-8 สำหรับ JSON เพื่อให้ชื่อ/ข้อความภาษาไทยแสดงถูกต้อง
+  app.use((_req, res, next) => {
+    const originalJson = res.json.bind(res);
+    res.json = function (body: any) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return originalJson(body);
+    };
+    next();
+  });
+
   // Performance: Gzip/Brotli compression - reduces response size 60-80%
   app.use(compression({ level: 6, threshold: 1024 }));
 

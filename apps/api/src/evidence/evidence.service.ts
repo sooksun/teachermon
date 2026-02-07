@@ -6,6 +6,10 @@ import { IndicatorsService } from '../indicators/indicators.service';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
+import sharp from 'sharp';
+
+const MAX_IMAGE_DIMENSION_PX = 1028;
+const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
 @Injectable()
 export class EvidenceService {
@@ -23,6 +27,34 @@ export class EvidenceService {
    */
   private normalizeIndicatorCodes(codes: any): any {
     return this.indicatorsService.normalizeIndicatorCodes(codes);
+  }
+
+  /**
+   * Resize รูปให้ด้านยาวไม่เกิน MAX_IMAGE_DIMENSION_PX (คงอัตราส่วน)
+   * ถ้าไม่ใช่รูปหรือเล็กอยู่แล้ว คืน buffer เดิม
+   */
+  private async resizeImageIfNeeded(buffer: Buffer, mimetype: string): Promise<Buffer> {
+    if (!IMAGE_MIMES.includes(mimetype)) return buffer;
+    try {
+      const meta = await sharp(buffer).metadata();
+      const w = meta.width ?? 0;
+      const h = meta.height ?? 0;
+      const maxSide = Math.max(w, h);
+      if (maxSide <= MAX_IMAGE_DIMENSION_PX) return buffer;
+      const out = await sharp(buffer)
+        .resize({
+          width: MAX_IMAGE_DIMENSION_PX,
+          height: MAX_IMAGE_DIMENSION_PX,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .toBuffer();
+      this.logger.log(`Resized image from ${w}x${h} to max ${MAX_IMAGE_DIMENSION_PX}px`);
+      return out;
+    } catch (err) {
+      this.logger.warn('Image resize failed, saving original', err);
+      return buffer;
+    }
   }
 
   /**
@@ -104,9 +136,10 @@ export class EvidenceService {
       await fs.mkdir(uploadDir, { recursive: true });
     }
 
-    // บันทึกไฟล์
+    // Resize รูปให้ไม่เกิน 1028px แล้วบันทึก
+    const bufferToSave = await this.resizeImageIfNeeded(data.file.buffer, data.file.mimetype);
     const filePath = path.join(uploadDir, standardFilename);
-    await fs.writeFile(filePath, data.file.buffer);
+    await fs.writeFile(filePath, bufferToSave);
 
     // สร้าง URL (adjust ตาม environment)
     // ใช้ API prefix เพื่อให้ frontend สามารถโหลดได้ผ่าน API server

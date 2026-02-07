@@ -37,6 +37,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="th" className={sarabun.variable}>
+      <head>
+        <meta charSet="utf-8" />
+      </head>
       <body className={`${sarabun.className} antialiased`}>
         <ErrorBoundary>
           <AntdRegistry>
