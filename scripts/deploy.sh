@@ -101,6 +101,8 @@ if [ "$FRESH" = "--fresh" ]; then
 fi
 # ลบ container เก่าก่อน up เสมอ — ป้องกัน "name conflict"
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down --remove-orphans 2>/dev/null || true
+# Fallback: ถ้า compose down ไม่ได้ลบจริง ให้ rm -f ตรงๆ
+docker rm -f teachermon-api teachermon-web 2>/dev/null || true
 
 info "กำลัง build & deploy..."
 docker compose -f "$COMPOSE_FILE" \
