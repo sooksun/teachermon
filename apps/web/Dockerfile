@@ -22,7 +22,7 @@ RUN pnpm install --frozen-lockfile --prod=false
 FROM base AS build
 
 # Build-time env (will be baked into the client bundle)
-ARG NEXT_PUBLIC_API_URL=http://localhost:3001/api
+ARG NEXT_PUBLIC_API_URL=/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 

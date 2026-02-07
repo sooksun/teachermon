@@ -100,12 +100,13 @@ if [ "$FRESH" = "--fresh" ]; then
     warn "Fresh deploy — กำลังลบ container เก่า..."
 fi
 # ลบ container เก่าก่อน up เสมอ — ป้องกัน "name conflict"
-docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down --remove-orphans 2>/dev/null || true
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT_NAME" down --remove-orphans 2>/dev/null || true
 # Fallback: ถ้า compose down ไม่ได้ลบจริง ให้ rm -f ตรงๆ
 docker rm -f teachermon-api teachermon-web 2>/dev/null || true
 
 info "กำลัง build & deploy..."
 docker compose -f "$COMPOSE_FILE" \
+    --env-file "$ENV_FILE" \
     -p "$PROJECT_NAME" \
     up -d --build --remove-orphans
 
@@ -149,7 +150,7 @@ WEB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9903 2>/dev
 echo ""
 info "===== Deployment Summary ====="
 echo ""
-docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p "$PROJECT_NAME" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 info "URLs (LAN):"
 info "  Web:      http://192.168.1.4:9903"
