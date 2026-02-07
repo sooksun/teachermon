@@ -3,7 +3,6 @@
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '@/lib/hooks/use-auth';
 
 interface DetailModalProps {
   isOpen: boolean;
@@ -21,17 +20,16 @@ const EVIDENCE_TYPE_LABELS: Record<string, string> = {
   OTHER: 'อื่นๆ',
 };
 
-// Helper to normalize file path (backend returns e.g. /api/uploads/xxx.jpg)
+// Helper to normalize file path
+// ใช้ /uploads/ (Next.js route) แทน /api/uploads/ (NestJS) เพื่อหลีกเลี่ยง rate limit
 const getFileUrl = (fileUrl: string | null | undefined): string => {
   if (!fileUrl) return '';
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
     return fileUrl;
   }
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
-  const origin = apiBase.replace(/\/api\/?$/, '') || apiBase;
   const standardNameMatch = fileUrl.match(/([a-f0-9-]{36}\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx))/i);
   const filename = standardNameMatch ? standardNameMatch[1] : (fileUrl.split('/').pop() || fileUrl.split('\\').pop() || fileUrl);
-  return `${origin}/api/uploads/${filename}`;
+  return `/uploads/${filename}`;
 };
 
 const getDisplayFilename = (item: any): string => {
@@ -108,7 +106,6 @@ const getFileType = (item: any): 'image' | 'pdf' | 'video' | 'other' => {
 };
 
 export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
-  const { getToken } = useAuth();
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,10 +131,8 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
     setError(null);
 
     try {
-      const token = getToken();
-      const response = await fetch(fileUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      // ไม่ต้อง auth — ใช้ Next.js route (/uploads/) ที่เป็น public
+      const response = await fetch(fileUrl);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);

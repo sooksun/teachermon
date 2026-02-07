@@ -20,18 +20,17 @@ const EVIDENCE_TYPE_LABELS: Record<string, string> = {
   OTHER: 'อื่นๆ',
 };
 
-// Helper to normalize file path (backend returns e.g. /api/uploads/xxx.jpg)
+// Helper to normalize file path
+// ใช้ /uploads/ (Next.js route) แทน /api/uploads/ (NestJS) เพื่อหลีกเลี่ยง rate limit
 const getFileUrl = (fileUrl: string | null | undefined): string => {
   if (!fileUrl) return '';
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
     return fileUrl;
   }
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
-  const origin = apiBase.replace(/\/api\/?$/, '') || apiBase;
-  // ดึงเฉพาะชื่อไฟล์ที่ใช้โหลดได้ (UUID.ext) กรณี response มี encoding ผิด
+  // ดึงเฉพาะชื่อไฟล์ UUID.ext
   const standardNameMatch = fileUrl.match(/([a-f0-9-]{36}\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx))/i);
   const filename = standardNameMatch ? standardNameMatch[1] : (fileUrl.split('/').pop() || fileUrl.split('\\').pop() || fileUrl);
-  return `${origin}/api/uploads/${filename}`;
+  return `/uploads/${filename}`;
 };
 
 // ชื่อแสดง: ถ้า originalFilename เป็น mojibake ใช้ fallback

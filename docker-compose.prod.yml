@@ -56,6 +56,10 @@ services:
     container_name: teachermon-web
     environment:
       NODE_ENV: production
+    # Mount uploads directory (read-only) เพื่อเสิร์ฟรูปภาพผ่าน Next.js
+    # ไม่ต้องผ่าน NestJS API → ไม่โดน rate limit
+    volumes:
+      - ./uploads:/app/uploads:ro
     ports:
       - '9903:3000'
     depends_on:
