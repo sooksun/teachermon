@@ -129,9 +129,9 @@ fi
 
 # ---------- RUN PRISMA MIGRATION ----------
 info "Running Prisma Migrate Deploy..."
-# prisma@5.22.0 ถูกติดตั้งไว้ใน Docker image แล้ว — ใช้ node_modules/.bin/prisma โดยตรง
+# ใช้ pnpm ของ workspace ใน container เพื่อเรียก prisma ที่อยู่ใน packages/database
 docker exec teachermon-api \
-    node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma \
+    pnpm --filter @teachermon/database db:migrate:deploy \
     2>&1 || warn "Migration ข้าม (อาจ migrate แล้ว)"
 log "Database migration เสร็จ"
 
