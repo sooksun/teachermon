@@ -64,12 +64,8 @@ RUN pnpm install --frozen-lockfile --prod
 # Copy database package (index.js, prisma schema, etc.)
 COPY packages/database ./packages/database
 
-# Copy generated Prisma client + CLI from build stage
-# หลีกเลี่ยงการ generate ใน production ที่มีข้อจำกัดของ pnpm workspace
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=build /app/node_modules/prisma ./node_modules/prisma
-COPY --from=build /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+# Generate Prisma client in production using prisma dependency (non-dev)
+RUN pnpm --filter @teachermon/database db:generate
 
 # Copy built shared package
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
