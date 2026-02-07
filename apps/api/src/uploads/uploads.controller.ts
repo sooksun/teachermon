@@ -50,9 +50,17 @@ export class UploadsController {
       }
     }
 
-    // Build file path
-    const uploadsDir = path.join(process.cwd(), 'uploads');
-    const filePath = path.join(uploadsDir, filename);
+    // Build file path — ต้องตรงกับ evidence.service (Docker: /app/apps/api/uploads)
+    const cwd = process.cwd();
+    const uploadsDirResolved = path.resolve(
+      (cwd.endsWith(path.join('apps', 'api')) || cwd.endsWith('apps\\api'))
+        ? path.join(cwd, 'uploads')
+        : path.join(cwd, 'apps', 'api', 'uploads'),
+    );
+    const filePath = path.resolve(uploadsDirResolved, filename);
+    if (!filePath.startsWith(uploadsDirResolved)) {
+      throw new NotFoundException('File not found');
+    }
 
     // Check if file exists
     if (!fs.existsSync(filePath)) {
