@@ -23,6 +23,7 @@ export interface PDPAViolation {
 
 export interface JournalImproveResult {
   improvedText: string;
+  improvedFields?: Record<string, string>;
   suggestions: string[];
   confidenceScore: number; // 0.0 - 1.0
   model: string;

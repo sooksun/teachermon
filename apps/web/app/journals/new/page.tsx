@@ -112,14 +112,6 @@ export default function NewJournalPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
               
-              {/* AI Helper */}
-              <div className="mt-3">
-                <AIJournalHelper 
-                  text={formData.reflectionText}
-                  onTextImproved={(improved) => setFormData(prev => ({ ...prev, reflectionText: improved }))}
-                  indicatorCode="WP.1"
-                />
-              </div>
             </div>
 
             <div>
@@ -164,6 +156,20 @@ export default function NewJournalPage() {
                 onChange={handleChange}
                 placeholder="สิ่งที่ต้องการความช่วยเหลือหรือคำแนะนำ..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+
+            {/* AI Helper - ปรับภาษาทุกช่อง */}
+            <div className="border-t border-gray-200 pt-4">
+              <AIJournalHelper
+                fields={{
+                  reflectionText: formData.reflectionText,
+                  successStory: formData.successStory,
+                  difficulty: formData.difficulty,
+                  supportRequest: formData.supportRequest,
+                }}
+                onFieldsImproved={(improved) => setFormData(prev => ({ ...prev, ...improved }))}
+                indicatorCode="WP.1"
               />
             </div>
           </div>

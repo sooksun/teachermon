@@ -68,17 +68,29 @@ export class JournalsController {
   // AI Features
   // ========================================
 
-  @ApiOperation({ summary: '[AI] ปรับปรุงภาษาให้เป็นทางการ' })
+  @ApiOperation({ summary: '[AI] ปรับปรุงภาษาให้เป็นทางการ (รองรับหลายช่อง)' })
   @Post('ai/improve-language')
   async improveLanguage(
-    @Body() body: { text: string; indicatorCode?: string; focusArea?: string },
+    @Body() body: { text?: string; fields?: Record<string, string>; indicatorCode?: string; focusArea?: string },
     @Request() req: any,
   ) {
     const userId = req.user?.userId || 'demo-user';
-    return this.journalAI.improveLanguage(body.text, userId, {
+    const context = {
       indicatorCode: body.indicatorCode,
       focusArea: body.focusArea,
-    });
+    };
+
+    // รองรับแบบหลายช่อง (fields) 
+    if (body.fields && Object.keys(body.fields).length > 0) {
+      return this.journalAI.improveMultipleFields(body.fields, userId, context);
+    }
+
+    // รองรับแบบเดิม (text เดี่ยว) สำหรับ backward compatibility
+    if (body.text) {
+      return this.journalAI.improveLanguage(body.text, userId, context);
+    }
+
+    return { improvedText: '', improvedFields: {}, suggestions: ['กรุณากรอกข้อมูลก่อนปรับภาษา'] };
   }
 
   @ApiOperation({ summary: '[AI] แนะนำคำถามสะท้อนคิด' })

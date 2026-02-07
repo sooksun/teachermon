@@ -76,6 +76,100 @@ export class JournalAIService {
   }
 
   /**
+   * ปรับปรุงภาษาหลายช่องพร้อมกัน
+   * รับ fields เป็น object { reflectionText, successStory, difficulty, supportRequest }
+   * ปรับภาษาทุกช่องที่มีข้อมูล
+   */
+  async improveMultipleFields(
+    fields: Record<string, string>,
+    userId: string,
+    context?: { indicatorCode?: string; focusArea?: string },
+  ): Promise<{
+    improvedFields: Record<string, string>;
+    suggestions: string[];
+    confidenceScore: number;
+    model: string;
+  }> {
+    if (!this.geminiAI.isAIEnabled()) {
+      const errorMsg = 'AI is not enabled. Please configure GEMINI_API_KEY in .env file.';
+      this.logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    const fieldLabels: Record<string, string> = {
+      reflectionText: 'การสะท้อนตนเอง',
+      successStory: 'เรื่องเล่าความสำเร็จ',
+      difficulty: 'ความท้าทาย/ปัญหาที่พบ',
+      supportRequest: 'ต้องการความช่วยเหลือ',
+    };
+
+    // 1. ตรวจ PDPA ทุกช่อง
+    const allText = Object.values(fields).join('\n\n');
+    const pdpaCheck = await this.pdpaScanner.checkText(
+      allText,
+      userId,
+      'journal_draft',
+      'temp-' + Date.now(),
+    );
+
+    if (pdpaCheck.riskLevel === 'HIGH_RISK') {
+      this.logger.warn(`HIGH PDPA RISK detected in journal multi-field input by user ${userId}`);
+    }
+
+    // 2. ปรับภาษาแต่ละช่อง
+    const improvedFields: Record<string, string> = {};
+    const allSuggestions: string[] = [];
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (!value || value.trim().length < 5) continue;
+
+      try {
+        const improved = await this.geminiAI.improveLanguage(value, {
+          ...context,
+          focusArea: fieldLabels[key] || key,
+        });
+        improvedFields[key] = improved;
+
+        const fieldSuggestions = this.generateImprovementSuggestions(value, improved);
+        allSuggestions.push(...fieldSuggestions.slice(0, 1));
+      } catch (err) {
+        this.logger.error(`Failed to improve field ${key}: ${err}`);
+        // ข้ามช่องที่ error ไม่ต้องหยุดทั้งหมด
+        improvedFields[key] = value;
+      }
+    }
+
+    // 3. เพิ่ม suggestions ถ้ามีช่องว่าง
+    const emptyFieldNames = Object.entries(fieldLabels)
+      .filter(([key]) => !fields[key] || !fields[key].trim())
+      .map(([, label]) => label);
+
+    if (emptyFieldNames.length > 0) {
+      allSuggestions.unshift(`ยังไม่ได้กรอก: ${emptyFieldNames.join(', ')} - แนะนำให้กรอกทุกช่องเพื่อบันทึกที่สมบูรณ์`);
+    }
+
+    // 4. ลบ suggestions ซ้ำ
+    const uniqueSuggestions = [...new Set(allSuggestions)];
+
+    // 5. บันทึก activity
+    await this.aiActivityService.logActivity({
+      userId,
+      actionType: 'JOURNAL_IMPROVE_MULTI',
+      inputData: { originalFields: fields, context },
+      outputData: { improvedFields, suggestions: uniqueSuggestions },
+      modelUsed: this.geminiAI.getModelName(),
+      confidenceScore: 0.85,
+    });
+
+    return {
+      improvedFields,
+      suggestions: uniqueSuggestions,
+      confidenceScore: 0.85,
+      model: this.geminiAI.getModelName(),
+    };
+  }
+
+  /**
    * แนะนำคำถามสะท้อนคิดตาม Indicator
    */
   async suggestReflectionPrompts(

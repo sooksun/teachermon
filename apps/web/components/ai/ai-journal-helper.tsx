@@ -5,35 +5,90 @@ import { Sparkles, Lightbulb, Shield, Loader2 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { toast } from 'react-toastify';
 
+interface JournalFields {
+  reflectionText: string;
+  successStory: string;
+  difficulty: string;
+  supportRequest: string;
+}
+
 interface AIJournalHelperProps {
-  text: string;
-  onTextImproved: (improvedText: string) => void;
+  fields: JournalFields;
+  onFieldsImproved: (improved: Partial<JournalFields>) => void;
   indicatorCode?: string;
 }
 
-export function AIJournalHelper({ text, onTextImproved, indicatorCode = 'WP.1' }: AIJournalHelperProps) {
+const FIELD_LABELS: Record<keyof JournalFields, string> = {
+  reflectionText: 'การสะท้อนตนเอง',
+  successStory: 'เรื่องเล่าความสำเร็จ',
+  difficulty: 'ความท้าทาย/ปัญหาที่พบ',
+  supportRequest: 'ต้องการความช่วยเหลือ',
+};
+
+export function AIJournalHelper({ fields, onFieldsImproved, indicatorCode = 'WP.1' }: AIJournalHelperProps) {
   const [isImproving, setIsImproving] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [showPrompts, setShowPrompts] = useState(false);
   const [prompts, setPrompts] = useState<string[]>([]);
 
-  // ปรับภาษาให้เป็นทางการ
+  // ตรวจสอบช่องว่าง
+  const getEmptyFields = (): string[] => {
+    const empty: string[] = [];
+    if (!fields.reflectionText?.trim()) empty.push(FIELD_LABELS.reflectionText);
+    if (!fields.successStory?.trim()) empty.push(FIELD_LABELS.successStory);
+    if (!fields.difficulty?.trim()) empty.push(FIELD_LABELS.difficulty);
+    if (!fields.supportRequest?.trim()) empty.push(FIELD_LABELS.supportRequest);
+    return empty;
+  };
+
+  // ตรวจสอบว่ามีข้อมูลพอที่จะปรับหรือไม่
+  const getFilledFields = (): Partial<JournalFields> => {
+    const filled: Partial<JournalFields> = {};
+    if (fields.reflectionText?.trim()) filled.reflectionText = fields.reflectionText;
+    if (fields.successStory?.trim()) filled.successStory = fields.successStory;
+    if (fields.difficulty?.trim()) filled.difficulty = fields.difficulty;
+    if (fields.supportRequest?.trim()) filled.supportRequest = fields.supportRequest;
+    return filled;
+  };
+
+  // ปรับภาษาทุกช่องที่มีข้อมูล
   const handleImproveLanguage = async () => {
-    if (!text || text.trim().length < 10) {
-      toast.warning('กรุณาเขียนข้อความอย่างน้อย 10 ตัวอักษร', { position: 'top-right' });
+    const emptyFields = getEmptyFields();
+    const filledFields = getFilledFields();
+
+    // แจ้งเตือนช่องว่าง
+    if (emptyFields.length === 4) {
+      toast.warning('กรุณากรอกข้อมูลอย่างน้อย 1 ช่องก่อนปรับภาษา', { position: 'top-right' });
       return;
+    }
+
+    if (emptyFields.length > 0) {
+      toast.info(
+        <div>
+          <strong>📝 ช่องที่ยังไม่ได้กรอก:</strong>
+          <ul className="list-disc ml-4 mt-1">
+            {emptyFields.map((name, i) => (
+              <li key={i} className="text-sm">{name}</li>
+            ))}
+          </ul>
+          <p className="text-xs mt-1 text-gray-500">จะปรับภาษาเฉพาะช่องที่กรอกแล้ว</p>
+        </div>,
+        { position: 'top-right', autoClose: 5000 }
+      );
     }
 
     setIsImproving(true);
     try {
       const response = await apiClient.post('/journals/ai/improve-language', {
-        text,
+        fields: filledFields,
         indicatorCode,
       });
 
-      onTextImproved(response.data.improvedText);
-      
-      toast.success('✨ ปรับภาษาเสร็จแล้ว!', { 
+      const improved = response.data.improvedFields || {};
+      onFieldsImproved(improved);
+
+      const fieldCount = Object.keys(improved).length;
+      toast.success(`✨ ปรับภาษาเสร็จ ${fieldCount} ช่อง!`, {
         position: 'top-right',
         autoClose: 2000,
       });
@@ -49,10 +104,7 @@ export function AIJournalHelper({ text, onTextImproved, indicatorCode = 'WP.1' }
               ))}
             </ul>
           </div>,
-          { 
-            position: 'bottom-right',
-            autoClose: 8000,
-          }
+          { position: 'bottom-right', autoClose: 8000 }
         );
       }
     } catch (error: any) {
@@ -65,9 +117,12 @@ export function AIJournalHelper({ text, onTextImproved, indicatorCode = 'WP.1' }
     }
   };
 
-  // ตรวจสอบ PDPA
+  // ตรวจสอบ PDPA ทุกช่อง
   const handleCheckPDPA = async () => {
-    if (!text || text.trim().length < 10) {
+    const filledFields = getFilledFields();
+    const allText = Object.values(filledFields).join('\n\n');
+
+    if (allText.trim().length < 10) {
       toast.warning('กรุณาเขียนข้อความก่อนตรวจสอบ', { position: 'top-right' });
       return;
     }
@@ -75,18 +130,18 @@ export function AIJournalHelper({ text, onTextImproved, indicatorCode = 'WP.1' }
     setIsChecking(true);
     try {
       const response = await apiClient.post('/journals/ai/check-pdpa', {
-        text,
+        text: allText,
       });
 
       const { isSafe, riskLevel, violations, suggestions } = response.data;
 
       if (isSafe) {
-        toast.success('✅ ปลอดภัย! ไม่พบข้อมูลอ่อนไหว', {
+        toast.success('✅ ปลอดภัย! ไม่พบข้อมูลอ่อนไหวในทุกช่อง', {
           position: 'top-right',
           autoClose: 3000,
         });
       } else {
-        const riskColor = 
+        const riskColor =
           riskLevel === 'HIGH_RISK' ? 'text-red-600' :
           riskLevel === 'MEDIUM_RISK' ? 'text-orange-600' :
           'text-yellow-600';
@@ -107,16 +162,11 @@ export function AIJournalHelper({ text, onTextImproved, indicatorCode = 'WP.1' }
               </div>
             )}
           </div>,
-          {
-            position: 'top-center',
-            autoClose: 10000,
-          }
+          { position: 'top-center', autoClose: 10000 }
         );
       }
     } catch (error: any) {
-      toast.error('เกิดข้อผิดพลาดในการตรวจสอบ PDPA', {
-        position: 'top-right',
-      });
+      toast.error('เกิดข้อผิดพลาดในการตรวจสอบ PDPA', { position: 'top-right' });
     } finally {
       setIsChecking(false);
     }
@@ -129,12 +179,9 @@ export function AIJournalHelper({ text, onTextImproved, indicatorCode = 'WP.1' }
       const response = await apiClient.post('/journals/ai/suggest-prompts', {
         indicatorCode,
       });
-
       setPrompts(response.data.prompts || []);
     } catch (error: any) {
-      toast.error('เกิดข้อผิดพลาดในการแนะนำคำถาม', {
-        position: 'top-right',
-      });
+      toast.error('เกิดข้อผิดพลาดในการแนะนำคำถาม', { position: 'top-right' });
     }
   };
 
@@ -153,7 +200,7 @@ export function AIJournalHelper({ text, onTextImproved, indicatorCode = 'WP.1' }
           ) : (
             <Sparkles className="w-4 h-4 mr-2" />
           )}
-          {isImproving ? 'กำลังปรับภาษา...' : '✨ ช่วยปรับภาษา'}
+          {isImproving ? 'กำลังปรับภาษาทุกช่อง...' : '✨ ช่วยปรับภาษา'}
         </button>
 
         <button
@@ -185,13 +232,7 @@ export function AIJournalHelper({ text, onTextImproved, indicatorCode = 'WP.1' }
         <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-medium text-blue-900">💡 คำถามสะท้อนคิดสำหรับ {indicatorCode}</h4>
-            <button
-              type="button"
-              onClick={() => setShowPrompts(false)}
-              className="text-blue-600 hover:text-blue-800"
-            >
-              ✕
-            </button>
+            <button type="button" onClick={() => setShowPrompts(false)} className="text-blue-600 hover:text-blue-800">✕</button>
           </div>
           <ul className="space-y-2 text-sm text-blue-800">
             {prompts.map((prompt, index) => (
