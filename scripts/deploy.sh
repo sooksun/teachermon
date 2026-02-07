@@ -98,8 +98,9 @@ FRESH="${1:-}"
 
 if [ "$FRESH" = "--fresh" ]; then
     warn "Fresh deploy — กำลังลบ container เก่า..."
-    docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down --remove-orphans 2>/dev/null || true
 fi
+# ลบ container เก่าก่อน up เสมอ — ป้องกัน "name conflict"
+docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down --remove-orphans 2>/dev/null || true
 
 info "กำลัง build & deploy..."
 docker compose -f "$COMPOSE_FILE" \
@@ -127,7 +128,7 @@ fi
 # ---------- RUN PRISMA MIGRATION ----------
 info "Running Prisma Migrate Deploy..."
 docker exec teachermon-api \
-    npx prisma migrate deploy --schema=packages/database/prisma/schema.prisma \
+    ./node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma \
     2>&1 || warn "Migration ข้าม (อาจ migrate แล้ว)"
 log "Database migration เสร็จ"
 
