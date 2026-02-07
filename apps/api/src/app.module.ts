@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
-import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+// APP_GUARD + ThrottlerGuard ปิดชั่วคราว — ใช้ Nginx rate limit แทน
+// import { APP_GUARD } from '@nestjs/core';
+// import { ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { TeachersModule } from './teachers/teachers.module';
@@ -35,19 +37,10 @@ import { HealthModule } from './health/health.module';
       ttl: 30000, // 30 seconds default TTL
       max: 100,   // Maximum number of items in cache
     }),
-    // Rate Limiting — เพิ่ม limit เพราะผ่าน reverse proxy ทุก request เป็น IP เดียวกัน
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 60000, // 1 minute
-        limit: 600, // 600 requests per minute (ผ่าน proxy ใช้ IP เดียว)
-      },
-      {
-        name: 'strict',
-        ttl: 60000, // 1 minute
-        limit: 30, // 30 requests per minute (for sensitive endpoints)
-      },
-    ]),
+    // Rate Limiting — ปิด global guard เพราะอยู่หลัง reverse proxy
+    // (ทุก request มาจาก IP เดียวกัน ทำให้ limit โดนหมด)
+    // ให้ Nginx Proxy Manager จัดการ rate limit แทน
+    ThrottlerModule.forRoot([]),
     PrismaModule,
     AuthModule,
     TeachersModule,
@@ -68,10 +61,12 @@ import { HealthModule } from './health/health.module';
     HealthModule,
   ],
   providers: [
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
+    // ThrottlerGuard ถูกปิด — ใช้ Nginx rate limit แทน
+    // หากต้องการเปิดกลับ ให้ uncomment และตั้ง limit ใน ThrottlerModule.forRoot
+    // {
+    //   provide: APP_GUARD,
+    //   useClass: ThrottlerGuard,
+    // },
   ],
 })
 export class AppModule {}
