@@ -2,7 +2,7 @@
 
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/hooks/use-auth';
 
 interface DetailModalProps {
@@ -50,7 +50,6 @@ const getVideoEmbedUrl = (videoUrl: string, platform: string): string | null => 
   if (!videoUrl) return null;
   
   if (platform === 'youtube' || videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be')) {
-    // Extract video ID from YouTube URL
     let videoId = '';
     if (videoUrl.includes('youtu.be/')) {
       videoId = videoUrl.split('youtu.be/')[1]?.split('?')[0] || '';
@@ -72,7 +71,6 @@ const getVideoEmbedUrl = (videoUrl: string, platform: string): string | null => 
     }
   }
   
-  // For Google Drive videos
   if (videoUrl.includes('drive.google.com')) {
     let fileId = '';
     if (videoUrl.includes('/file/d/')) {
@@ -114,14 +112,21 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
 
   const fileType = item ? getFileType(item) : 'other';
   const isVideoLink = item?.itemType === 'VIDEO_LINK';
+  const isImage = fileType === 'image';
 
-  // Fetch file with authentication
-  const fetchFile = useCallback(async () => {
-    if (!item || isVideoLink) return;
-    
+  // สำหรับ image ใช้ <img src> ตรงๆ ไม่ต้อง fetch
+  const imageUrl = isImage && item?.fileUrl ? getFileUrl(item.fileUrl) : null;
+
+  // สำหรับ PDF/other files ต้อง fetch เป็น blob
+  const itemFileKey = item ? `${item.id}-${item.fileUrl}` : '';
+
+  const doFetch = async () => {
+    if (!item || isVideoLink || isImage) return; // image ไม่ต้อง fetch
+
     const fileUrl = getFileUrl(item.fileUrl);
     if (!fileUrl) return;
 
@@ -131,16 +136,19 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
     try {
       const token = getToken();
       const response = await fetch(fileUrl, {
-        credentials: 'include',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (!response.ok) {
-        throw new Error('Failed to load file');
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+      }
+      blobUrlRef.current = blobUrl;
       setFileBlobUrl(blobUrl);
     } catch (err) {
       console.error('Error fetching file:', err);
@@ -148,20 +156,30 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [item, isVideoLink, getToken]);
+  };
 
   useEffect(() => {
-    if (isOpen && item && !isVideoLink) {
-      fetchFile();
+    if (isOpen && item && !isVideoLink && !isImage) {
+      doFetch();
+    }
+
+    if (!isOpen) {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+      setFileBlobUrl(null);
+      setError(null);
     }
 
     return () => {
-      if (fileBlobUrl) {
-        URL.revokeObjectURL(fileBlobUrl);
-        setFileBlobUrl(null);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
     };
-  }, [isOpen, item, isVideoLink, fetchFile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, itemFileKey]);
 
   if (!isOpen || !item) return null;
 
@@ -175,9 +193,11 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
   };
 
   const handleDownload = async () => {
-    if (fileBlobUrl) {
+    // สำหรับ image ใช้ URL ตรงๆ
+    const downloadUrl = isImage ? imageUrl : fileBlobUrl;
+    if (downloadUrl) {
       const link = document.createElement('a');
-      link.href = fileBlobUrl;
+      link.href = downloadUrl;
       link.download = getDisplayFilename(item) || 'download';
       document.body.appendChild(link);
       link.click();
@@ -215,7 +235,7 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
             </svg>
             <p className="text-sm text-red-600">{error}</p>
             <button
-              onClick={fetchFile}
+              onClick={doFetch}
               className="mt-2 text-sm text-primary-600 hover:text-primary-700"
             >
               ลองใหม่
@@ -258,12 +278,12 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
       );
     }
 
-    // Image preview
-    if (fileType === 'image' && fileBlobUrl) {
+    // Image preview — ใช้ <img src> ตรงๆ (browser cache)
+    if (isImage && imageUrl) {
       return (
         <div className="flex items-center justify-center bg-gray-100 rounded-lg overflow-hidden">
           <img
-            src={fileBlobUrl}
+            src={imageUrl}
             alt={getDisplayFilename(item) || 'Preview'}
             className="max-w-full max-h-[60vh] object-contain"
           />
@@ -444,15 +464,15 @@ export function DetailModal({ isOpen, onClose, item }: DetailModalProps) {
                 onClick={handleOpenVideo}
                 className="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700"
               >
-                📹 เปิดในหน้าต่างใหม่
+                เปิดในหน้าต่างใหม่
               </button>
             ) : (
               <button
                 onClick={handleDownload}
-                disabled={!fileBlobUrl}
+                disabled={!imageUrl && !fileBlobUrl}
                 className="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                📥 ดาวน์โหลด
+                ดาวน์โหลด
               </button>
             )}
           </div>

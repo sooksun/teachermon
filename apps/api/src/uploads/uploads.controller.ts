@@ -3,53 +3,30 @@ import {
   Get,
   Param,
   Res,
-  UseGuards,
-  Request,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { SkipThrottle } from '@nestjs/throttler';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { PrismaService } from '../prisma/prisma.service';
 import * as path from 'path';
 import * as fs from 'fs';
 
+/**
+ * Uploads Controller — Public endpoint
+ * ชื่อไฟล์เป็น UUID (เดาไม่ได้) จึงไม่จำเป็นต้อง auth
+ * ให้ browser cache ได้เลย เพื่อลด request ซ้ำ
+ */
 @Controller('uploads')
 @SkipThrottle()
-@UseGuards(JwtAuthGuard)
 export class UploadsController {
-  constructor(private readonly prisma: PrismaService) {}
-
-  /**
-   * Serve uploaded files with authentication and ownership check
-   */
   @Get(':filename')
   async serveFile(
     @Param('filename') filename: string,
     @Res() res: Response,
-    @Request() req: any,
   ) {
-    // Find the evidence by filename
-    const evidence = await this.prisma.evidencePortfolio.findFirst({
-      where: {
-        OR: [
-          { fileUrl: { contains: filename } },
-          { standardFilename: filename },
-          { originalFilename: filename },
-        ],
-      },
-    });
-
-    // Check ownership - only owner or admin can view
-    if (evidence) {
-      const user = req.user;
-      const isOwner = evidence.teacherId === user.teacherId;
-      const isAdmin = ['ADMIN', 'PROJECT_MANAGER', 'MENTOR'].includes(user.role);
-
-      if (!isOwner && !isAdmin) {
-        throw new ForbiddenException('You do not have permission to access this file');
-      }
+    // ป้องกัน path traversal (เช่น ../../etc/passwd)
+    const safeName = path.basename(filename);
+    if (safeName !== filename || filename.includes('..')) {
+      throw new NotFoundException('File not found');
     }
 
     // Build file path — ต้องตรงกับ evidence.service (Docker: /app/apps/api/uploads)
@@ -59,7 +36,9 @@ export class UploadsController {
         ? path.join(cwd, 'uploads')
         : path.join(cwd, 'apps', 'api', 'uploads'),
     );
-    const filePath = path.resolve(uploadsDirResolved, filename);
+    const filePath = path.resolve(uploadsDirResolved, safeName);
+
+    // Double-check path is inside uploads dir
     if (!filePath.startsWith(uploadsDirResolved)) {
       throw new NotFoundException('File not found');
     }
@@ -70,7 +49,7 @@ export class UploadsController {
     }
 
     // Determine content type
-    const ext = path.extname(filename).toLowerCase();
+    const ext = path.extname(safeName).toLowerCase();
     const contentTypes: Record<string, string> = {
       '.pdf': 'application/pdf',
       '.jpg': 'image/jpeg',
@@ -84,9 +63,10 @@ export class UploadsController {
 
     const contentType = contentTypes[ext] || 'application/octet-stream';
 
-    // Set headers for cross-origin access
+    // Set headers — browser cache 1 ชั่วโมง + Cross-Origin
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'public, max-age=3600, immutable');
 
     // Send file
     res.sendFile(filePath);

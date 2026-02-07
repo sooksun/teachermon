@@ -2,8 +2,7 @@
 
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '@/lib/hooks/use-auth';
+import { useState } from 'react';
 
 interface PortfolioItemCardProps {
   item: any;
@@ -32,9 +31,6 @@ const getFileUrl = (fileUrl: string | null | undefined): string => {
   // ดึงเฉพาะชื่อไฟล์ที่ใช้โหลดได้ (UUID.ext) กรณี response มี encoding ผิด
   const standardNameMatch = fileUrl.match(/([a-f0-9-]{36}\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx))/i);
   const filename = standardNameMatch ? standardNameMatch[1] : (fileUrl.split('/').pop() || fileUrl.split('\\').pop() || fileUrl);
-  if (fileUrl.startsWith('/')) {
-    return `${origin}/api/uploads/${filename}`;
-  }
   return `${origin}/api/uploads/${filename}`;
 };
 
@@ -98,55 +94,13 @@ const getFileType = (item: any): 'image' | 'pdf' | 'video' | 'other' => {
 };
 
 export function PortfolioItemCard({ item, onView, onDelete }: PortfolioItemCardProps) {
-  const { getToken } = useAuth();
-  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
+  const [imgError, setImgError] = useState(false);
   const fileType = getFileType(item);
   const isVideo = item.itemType === 'VIDEO_LINK';
 
-  // Fetch thumbnail for images
-  const fetchThumbnail = useCallback(async () => {
-    if (fileType !== 'image' || !item.fileUrl) return;
-    
-    const fileUrl = getFileUrl(item.fileUrl);
-    if (!fileUrl) return;
-
-    setIsLoading(true);
-    try {
-      const token = getToken();
-      const response = await fetch(fileUrl, {
-        credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-
-      if (response.ok) {
-        const blob = await response.blob();
-        setThumbnailUrl(URL.createObjectURL(blob));
-      }
-    } catch (err) {
-      console.error('Error fetching thumbnail:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [item.fileUrl, fileType, getToken]);
-
-  useEffect(() => {
-    if (fileType === 'image') {
-      fetchThumbnail();
-    } else if (isVideo) {
-      const thumbnail = getVideoThumbnail(item.videoUrl, item.videoPlatform);
-      if (thumbnail) {
-        setThumbnailUrl(thumbnail);
-      }
-    }
-
-    return () => {
-      if (thumbnailUrl && !thumbnailUrl.startsWith('https://')) {
-        URL.revokeObjectURL(thumbnailUrl);
-      }
-    };
-  }, [item, fileType, isVideo, fetchThumbnail]);
+  // สร้าง URL สำหรับรูปภาพ (ใช้ <img src> ตรงๆ — browser cache ได้)
+  const imageUrl = fileType === 'image' ? getFileUrl(item.fileUrl) : null;
+  const videoThumb = isVideo ? getVideoThumbnail(item.videoUrl, item.videoPlatform) : null;
 
   const formatThaiDate = (date: string) => {
     const d = new Date(date);
@@ -159,31 +113,38 @@ export function PortfolioItemCard({ item, onView, onDelete }: PortfolioItemCardP
 
   // Render thumbnail/preview
   const renderThumbnail = () => {
-    if (isLoading) {
+    // Image — ใช้ <img src> ตรงๆ ไม่ต้อง fetch + blob
+    if (fileType === 'image' && imageUrl && !imgError) {
       return (
-        <div className="w-full h-32 bg-gray-100 flex items-center justify-center">
-          <div className="animate-pulse w-10 h-10 bg-gray-200 rounded"></div>
+        <div className="w-full h-32 bg-gray-100 relative overflow-hidden">
+          <img
+            src={imageUrl}
+            alt={getDisplayFilename(item) || 'Preview'}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={() => setImgError(true)}
+          />
         </div>
       );
     }
 
-    if (thumbnailUrl) {
+    // Video thumbnail
+    if (isVideo && videoThumb) {
       return (
         <div className="w-full h-32 bg-gray-100 relative overflow-hidden">
           <img
-            src={thumbnailUrl}
-            alt={getDisplayFilename(item) || item.videoTitle || 'Preview'}
+            src={videoThumb}
+            alt={item.videoTitle || 'Video'}
             className="w-full h-full object-cover"
+            loading="lazy"
           />
-          {isVideo && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
-              <div className="w-12 h-12 bg-white bg-opacity-90 rounded-full flex items-center justify-center">
-                <svg className="w-6 h-6 text-red-600 ml-1" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                </svg>
-              </div>
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
+            <div className="w-12 h-12 bg-white bg-opacity-90 rounded-full flex items-center justify-center">
+              <svg className="w-6 h-6 text-red-600 ml-1" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+              </svg>
             </div>
-          )}
+          </div>
         </div>
       );
     }
@@ -236,7 +197,7 @@ export function PortfolioItemCard({ item, onView, onDelete }: PortfolioItemCardP
         <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
             <span className="bg-white px-3 py-1.5 rounded-full text-sm font-medium text-gray-700 shadow-lg">
-              👁️ ดูตัวอย่าง
+              ดูตัวอย่าง
             </span>
           </div>
         </div>
@@ -257,7 +218,7 @@ export function PortfolioItemCard({ item, onView, onDelete }: PortfolioItemCardP
         <div className="flex items-center gap-2 mb-2">
           {isVideo ? (
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-              📹 {item.videoPlatform || 'Video'}
+              {item.videoPlatform || 'Video'}
             </span>
           ) : (
             <>
@@ -266,9 +227,9 @@ export function PortfolioItemCard({ item, onView, onDelete }: PortfolioItemCardP
                 fileType === 'image' ? 'bg-green-100 text-green-800' :
                 'bg-blue-100 text-blue-800'
               }`}>
-                {fileType === 'pdf' ? '📄 PDF' :
-                 fileType === 'image' ? '🖼️ รูปภาพ' :
-                 '📁 ไฟล์'}
+                {fileType === 'pdf' ? 'PDF' :
+                 fileType === 'image' ? 'รูปภาพ' :
+                 'ไฟล์'}
               </span>
               {item.fileSize && (
                 <span className="text-xs text-gray-500">
