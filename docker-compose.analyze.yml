@@ -1,0 +1,97 @@
+# ============================================
+# TeacherMon - Video Analysis Workers
+# GPU ASR + Frame Extraction Workers
+# ============================================
+# ใช้ร่วมกับ docker-compose.prod.yml:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.analyze.yml \
+#     --env-file .env.production up -d --build
+#
+# หรือรันแยก (ต้องอยู่ network เดียวกัน):
+#   docker compose -f docker-compose.analyze.yml --env-file .env.production up -d --build
+# ============================================
+
+services:
+  # ---- ASR Worker (GPU required) ----
+  asr-worker:
+    build:
+      context: ./upgrade/asr-worker
+    image: teachermon-asr-worker:latest
+    container_name: teachermon-asr-worker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATA_ROOT: /data/jobs
+      MODEL_NAME: ${ASR_MODEL_NAME:-large-v3}
+      COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-float16}
+      NO_CPU_FALLBACK: "true"
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-root}
+      DB_PASS: ${DB_PASS:-}
+      DB_NAME: ${DB_NAME:-teachermon}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    volumes:
+      - analyze-data:/data
+    depends_on:
+      - redis
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    restart: unless-stopped
+    networks:
+      - teachermon-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+  # ---- Vision Worker (CPU, ffmpeg) ----
+  vision-worker:
+    build:
+      context: ./upgrade/vision-worker
+    image: teachermon-vision-worker:latest
+    container_name: teachermon-vision-worker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATA_ROOT: /data/jobs
+      FRAME_INTERVAL_SEC: ${FRAME_INTERVAL_SEC:-5}
+      QUOTA_BYTES_PER_USER: ${ANALYSIS_QUOTA_BYTES:-1073741824}
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-root}
+      DB_PASS: ${DB_PASS:-}
+      DB_NAME: ${DB_NAME:-teachermon}
+    volumes:
+      - analyze-data:/data
+    depends_on:
+      - redis
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    restart: unless-stopped
+    networks:
+      - teachermon-net
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+# ---- Use same volumes and network as main compose ----
+volumes:
+  analyze-data:
+    external: true
+    name: teachermon_analyze-data
+
+networks:
+  teachermon-net:
+    external: true
+    name: teachermon_teachermon-net
+
+# ---- Redis reference (already in docker-compose.prod.yml) ----
+# Workers connect to redis via teachermon-net

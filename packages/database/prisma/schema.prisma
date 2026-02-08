@@ -762,3 +762,107 @@ model SubIndicator {
   @@index([code])
   @@index([isActive])
 }
+
+// =============================================
+// VIDEO ANALYSIS (AI วิเคราะห์ชิ้นงาน)
+// =============================================
+
+enum AnalysisMode {
+  TEXT_ONLY    // ASR -> transcript -> AI analysis only
+  FULL         // ASR + frame extraction -> multimodal analysis
+}
+
+enum AnalysisJobStatus {
+  UPLOADING
+  UPLOADED
+  QUEUED
+  PROCESSING_ASR
+  ASR_DONE
+  PROCESSING_FRAMES
+  ANALYZING
+  DONE
+  FAILED
+  REJECTED_QUOTA
+}
+
+enum AnalysisSourceType {
+  UPLOAD       // direct file upload
+  GDRIVE       // Google Drive file
+  YOUTUBE      // YouTube URL
+}
+
+model AnalysisJob {
+  id                  String             @id @default(uuid())
+
+  // Owner
+  userId              String             @map("user_id")
+  teacherId           String?            @map("teacher_id")
+
+  // Job config
+  analysisMode        AnalysisMode       @default(TEXT_ONLY) @map("analysis_mode")
+  sourceType          AnalysisSourceType @default(UPLOAD) @map("source_type")
+  status              AnalysisJobStatus  @default(UPLOADING)
+
+  // Original file info
+  originalFilename    String?            @map("original_filename")
+  mimeType            String?            @map("mime_type")
+
+  // Byte accounting (for quota)
+  rawBytes            Int                @default(0) @map("raw_bytes")
+  audioBytes          Int                @default(0) @map("audio_bytes")
+  framesBytes         Int                @default(0) @map("frames_bytes")
+  totalBytes          Int                @default(0) @map("total_bytes")
+
+  // Error info
+  errorMessage        String?            @map("error_message") @db.Text
+  errorCode           String?            @map("error_code")
+
+  // Artifact flags / paths (relative to job dir)
+  hasTranscript       Boolean            @default(false) @map("has_transcript")
+  hasFrames           Boolean            @default(false) @map("has_frames")
+  hasReport           Boolean            @default(false) @map("has_report")
+  hasCover            Boolean            @default(false) @map("has_cover")
+
+  // AI analysis results (stored in DB for quick access)
+  transcriptSummary   String?            @map("transcript_summary") @db.Text
+  analysisReport      Json?              @map("analysis_report")
+  evaluationResult    Json?              @map("evaluation_result")
+  aiAdvice            String?            @map("ai_advice") @db.Text
+
+  // Timestamps
+  uploadedAt          DateTime?          @map("uploaded_at")
+  queuedAt            DateTime?          @map("queued_at")
+  asrStartedAt        DateTime?          @map("asr_started_at")
+  asrDoneAt           DateTime?          @map("asr_done_at")
+  framesStartedAt     DateTime?          @map("frames_started_at")
+  framesDoneAt        DateTime?          @map("frames_done_at")
+  analysisDoneAt      DateTime?          @map("analysis_done_at")
+  doneAt              DateTime?          @map("done_at")
+
+  // Retention (FULL mode: keep frames 1 year)
+  framesExpiresAt     DateTime?          @map("frames_expires_at")
+  framesDeletedAt     DateTime?          @map("frames_deleted_at")
+
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([teacherId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([framesExpiresAt])
+  @@map("analysis_job")
+}
+
+model UserMediaQuota {
+  id                  String    @id @default(uuid())
+  userId              String    @unique @map("user_id")
+
+  limitBytes          BigInt    @default(1073741824) @map("limit_bytes")  // 1 GB default
+  usageBytes          BigInt    @default(0) @map("usage_bytes")
+
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("user_media_quota")
+}

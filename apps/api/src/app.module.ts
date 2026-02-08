@@ -23,6 +23,7 @@ import { IndicatorsModule } from './indicators/indicators.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { BudgetModule } from './budget/budget.module';
 import { HealthModule } from './health/health.module';
+import { VideoAnalysisModule } from './video-analysis/video-analysis.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { HealthModule } from './health/health.module';
     UploadsModule,
     BudgetModule,
     HealthModule,
+    VideoAnalysisModule,
   ],
   providers: [
     // ThrottlerGuard ถูกปิด — ใช้ Nginx rate limit แทน

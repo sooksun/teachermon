@@ -10,6 +10,21 @@
 # ============================================
 
 services:
+  # ---- Redis (Queue for video analysis) ----
+  redis:
+    image: redis:7-alpine
+    container_name: teachermon-redis
+    restart: always
+    networks:
+      - teachermon-net
+    volumes:
+      - redis-data:/data
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '5m'
+        max-file: '3'
+
   # ---- NestJS API ----
   api:
     build:
@@ -22,12 +37,17 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
+      REDIS_URL: redis://redis:6379/0
+      ANALYSIS_DATA_ROOT: /data/jobs
     # โฟลเดอร์ uploads ต้อง chown 1000:1000 บน host (user node ใน container)
     # รันครั้งเดียว: sudo chown -R 1000:1000 uploads
     volumes:
       - ./uploads:/app/apps/api/uploads
+      - analyze-data:/data
     ports:
       - '9904:3001'
+    depends_on:
+      - redis
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     restart: always
@@ -73,6 +93,15 @@ services:
       options:
         max-size: '10m'
         max-file: '3'
+
+volumes:
+  redis-data:
+  analyze-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${ANALYZE_DATA_PATH:-/DATA/AppData/teach-analyze/data}
 
 networks:
   teachermon-net:

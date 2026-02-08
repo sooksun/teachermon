@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: apppass
+      POSTGRES_DB: teach_analyze
+    volumes:
+      - /DATA/AppData/teach-analyze/postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  media-api:
+    build:
+      context: ./media-api
+    environment:
+      DATABASE_URL: postgresql://app:apppass@postgres:5432/teach_analyze
+      REDIS_URL: redis://redis:6379/0
+      DATA_ROOT: /data/jobs
+      QUOTA_BYTES_PER_USER: "1073741824"
+    volumes:
+      - /DATA/AppData/teach-analyze/data:/data
+    ports:
+      - "9940:9940"
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  asr-worker:
+    build:
+      context: ./asr-worker
+    environment:
+      DATABASE_URL: postgresql://app:apppass@postgres:5432/teach_analyze
+      REDIS_URL: redis://redis:6379/0
+      DATA_ROOT: /data/jobs
+      MODEL_NAME: large-v3
+      COMPUTE_TYPE: float16
+      # IMPORTANT: no CPU fallback
+      NO_CPU_FALLBACK: "true"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    volumes:
+      - /DATA/AppData/teach-analyze/data:/data
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    # GPU access (compose v2)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+
+  vision-worker:
+    build:
+      context: ./vision-worker
+    environment:
+      DATABASE_URL: postgresql://app:apppass@postgres:5432/teach_analyze
+      REDIS_URL: redis://redis:6379/0
+      DATA_ROOT: /data/jobs
+      FRAME_INTERVAL_SEC: "5"
+    volumes:
+      - /DATA/AppData/teach-analyze/data:/data
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
