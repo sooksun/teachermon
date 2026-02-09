@@ -106,7 +106,7 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
 
   // ───────── Job CRUD ─────────
 
-  async createJob(userId: string, teacherId: string | null, dto: { analysisMode: string; sourceType?: string; originalFilename?: string }) {
+  async createJob(userId: string, teacherId: string | null, dto: { analysisMode: string; sourceType?: string; originalFilename?: string }): Promise<any> {
     // check quota before allowing creation
     const quota = await this.getQuota(userId);
     if (quota.remainingBytes <= 0) {
@@ -275,7 +275,7 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
           where: { id: job.id },
           data: {
             status: 'FAILED',
-            errorMessage: `Analysis error: ${err.message}`,
+            errorMessage: `Analysis error: ${err instanceof Error ? err.message : String(err)}`,
           },
         });
       }

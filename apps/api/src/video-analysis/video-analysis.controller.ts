@@ -33,7 +33,7 @@ export class VideoAnalysisController {
   // ───────── Jobs ─────────
 
   @Post('jobs')
-  async createJob(@Request() req: any, @Body() dto: CreateJobDto) {
+  async createJob(@Request() req: any, @Body() dto: CreateJobDto): Promise<any> {
     const teacherId = req.user.teacherId || null;
     return this.service.createJob(req.user.userId, teacherId, dto);
   }
