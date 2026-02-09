@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 interface AnalysisResultProps {
   job: {
@@ -19,10 +20,12 @@ interface AnalysisResultProps {
   onClose: () => void;
 }
 
-type Tab = 'summary' | 'report' | 'indicators' | 'advice';
+type Tab = 'summary' | 'report' | 'indicators' | 'advice' | 'transcript';
 
 export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
   const [activeTab, setActiveTab] = useState<Tab>('summary');
+  const [transcript, setTranscript] = useState<any>(null);
+  const [loadingTranscript, setLoadingTranscript] = useState(false);
   const report = job.analysisReport || {};
 
   const tabs: { id: Tab; label: string }[] = [
@@ -30,7 +33,20 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
     { id: 'report', label: 'ผลวิเคราะห์' },
     { id: 'indicators', label: 'ตัวชี้วัด' },
     { id: 'advice', label: 'คำแนะนำ' },
+    ...(job.hasTranscript ? [{ id: 'transcript' as Tab, label: 'ถอดเสียง' }] : []),
   ];
+
+  // load transcript when tab is selected
+  useEffect(() => {
+    if (activeTab === 'transcript' && !transcript && !loadingTranscript) {
+      setLoadingTranscript(true);
+      apiClient
+        .get(`/video-analysis/jobs/${job.id}/artifact/transcript.json`)
+        .then((res) => setTranscript(res.data))
+        .catch(() => setTranscript({ fullText: 'ไม่สามารถโหลดข้อความถอดเสียงได้' }))
+        .finally(() => setLoadingTranscript(false));
+    }
+  }, [activeTab, job.id, transcript, loadingTranscript]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -196,6 +212,59 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
                   {job.aiAdvice || 'ไม่มีคำแนะนำ'}
                 </p>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'transcript' && (
+            <div className="space-y-4">
+              {loadingTranscript ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
+                  <span className="ml-3 text-sm text-gray-500">กำลังโหลดข้อความถอดเสียง...</span>
+                </div>
+              ) : transcript ? (
+                <>
+                  {/* Meta info */}
+                  {(transcript.language || transcript.duration || transcript.speakerCount) && (
+                    <div className="flex flex-wrap gap-3 text-xs text-gray-500 pb-3 border-b">
+                      {transcript.duration && <span>ความยาว: {transcript.duration}</span>}
+                      {transcript.language && <span>ภาษา: {transcript.language === 'th' ? 'ไทย' : transcript.language}</span>}
+                      {transcript.speakerCount && <span>ผู้พูด: {transcript.speakerCount} คน</span>}
+                    </div>
+                  )}
+
+                  {/* Full text */}
+                  {transcript.fullText && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">ข้อความทั้งหมด</h3>
+                      <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">
+                        {transcript.fullText}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Segments */}
+                  {transcript.segments?.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                        แยกตามช่วงเวลา ({transcript.segments.length} ช่วง)
+                      </h3>
+                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                        {transcript.segments.map((seg: any, i: number) => (
+                          <div key={i} className="flex gap-3 p-2 rounded hover:bg-gray-50">
+                            <span className="text-xs text-amber-600 font-mono whitespace-nowrap mt-0.5 min-w-[80px]">
+                              {seg.start} – {seg.end}
+                            </span>
+                            <p className="text-sm text-gray-700">{seg.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-8">ไม่มีข้อมูลถอดเสียง</p>
+              )}
             </div>
           )}
         </div>

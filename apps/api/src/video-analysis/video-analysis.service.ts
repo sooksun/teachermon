@@ -325,14 +325,87 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     const filePath = path.join(rawDir, mediaFile);
     const mimeType = job.mimeType || this.guessMimeType(mediaFile);
     const isImage = /^image\//i.test(mimeType);
+    const isVideo = /^video\//i.test(mimeType);
+    const artDir = path.join(this.dataRoot, jobId, 'artifacts');
+    await fs.mkdir(artDir, { recursive: true });
 
     this.logger.log(`Analyzing ${isImage ? 'image' : 'video'} via Gemini: ${mediaFile} (${mimeType})`);
 
-    const prompt = isImage
-      ? this.buildImageAnalysisPrompt()
-      : this.buildVideoAnalysisPrompt();
+    // ─── Step 1: Transcript (ถอดเสียงจากวิดีโอ) ───
+    let transcriptText = '';
+    if (isVideo) {
+      this.logger.log(`Step 1/2: Transcribing audio from video...`);
+      await this.prisma.analysisJob.update({
+        where: { id: jobId },
+        data: { status: 'PROCESSING_ASR' as any },
+      });
 
-    const result = await this.geminiAI.generateWithMedia(prompt, filePath, mimeType);
+      try {
+        const transcriptResult = await this.geminiAI.generateWithMedia(
+          this.buildTranscriptPrompt(),
+          filePath,
+          mimeType,
+        );
+
+        transcriptText = transcriptResult.text.trim();
+
+        // parse transcript JSON if possible
+        let transcriptData: any;
+        try {
+          let cleaned = transcriptText;
+          if (cleaned.startsWith('```')) {
+            cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+          }
+          transcriptData = JSON.parse(cleaned);
+        } catch {
+          // plain text transcript
+          transcriptData = {
+            fullText: transcriptText,
+            segments: [],
+          };
+        }
+
+        // save transcript.json
+        await fs.writeFile(
+          path.join(artDir, 'transcript.json'),
+          JSON.stringify(transcriptData, null, 2),
+          'utf-8',
+        );
+
+        // save transcript.txt (plain text version)
+        const plainText = transcriptData.fullText
+          || (transcriptData.segments || []).map((s: any) => s.text).join('\n')
+          || transcriptText;
+        await fs.writeFile(
+          path.join(artDir, 'transcript.txt'),
+          plainText,
+          'utf-8',
+        );
+
+        await this.prisma.analysisJob.update({
+          where: { id: jobId },
+          data: { hasTranscript: true },
+        });
+
+        this.logger.log(`Transcript saved for job ${jobId} (${plainText.length} chars)`);
+      } catch (err) {
+        this.logger.warn(`Transcript extraction failed for job ${jobId}, continuing with visual analysis`, err);
+        // ไม่ fail ทั้ง job - ทำ analysis ต่อได้แม้ไม่มี transcript
+      }
+    }
+
+    // ─── Step 2: Full Analysis (วิเคราะห์วิดีโอ/รูปภาพ) ───
+    this.logger.log(`Step 2/2: Running full analysis...`);
+    await this.prisma.analysisJob.update({
+      where: { id: jobId },
+      data: { status: 'ANALYZING' },
+    });
+
+    const analysisPrompt = isImage
+      ? this.buildImageAnalysisPrompt()
+      : this.buildVideoAnalysisPrompt(transcriptText);
+
+    const result = await this.geminiAI.generateWithMedia(analysisPrompt, filePath, mimeType);
 
     // parse AI response
     let analysis: any;
@@ -352,8 +425,6 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     }
 
     // write report to disk
-    const artDir = path.join(this.dataRoot, jobId, 'artifacts');
-    await fs.mkdir(artDir, { recursive: true });
     await fs.writeFile(
       path.join(artDir, 'report.json'),
       JSON.stringify(analysis, null, 2),
@@ -378,9 +449,37 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Gemini analysis DONE for job ${jobId}`);
   }
 
-  private buildVideoAnalysisPrompt(): string {
+  private buildTranscriptPrompt(): string {
+    return `คุณเป็นผู้เชี่ยวชาญด้านการถอดเสียง (Speech-to-Text) ภาษาไทย
+กรุณาฟังเสียงในวิดีโอนี้แล้วถอดเสียงเป็นข้อความภาษาไทยอย่างละเอียด
+
+ให้ผลลัพธ์ในรูป JSON (ไม่มี markdown code fence) ดังนี้:
+{
+  "fullText": "ข้อความทั้งหมดที่ถอดเสียงได้ เรียงตามลำดับเวลา",
+  "segments": [
+    { "start": "00:00", "end": "00:30", "text": "ข้อความช่วงแรก..." },
+    { "start": "00:30", "end": "01:00", "text": "ข้อความช่วงต่อไป..." }
+  ],
+  "language": "th",
+  "speakerCount": 1,
+  "duration": "ความยาวโดยประมาณ เช่น 5:30"
+}
+
+เงื่อนไข:
+1. ถอดเสียงทุกคำที่ได้ยิน รวมถึงคำอุทาน คำถาม
+2. แบ่ง segment ทุก 30 วินาที โดยประมาณ
+3. ถ้ามีหลายคนพูด ให้ระบุ speakerCount
+4. ถ้าได้ยินไม่ชัด ใส่ [ไม่ชัด] แทน
+5. ตอบเป็น JSON เท่านั้น ภาษาไทย`;
+  }
+
+  private buildVideoAnalysisPrompt(transcript?: string): string {
+    const transcriptSection = transcript
+      ? `\n\nข้อความถอดเสียงจากวิดีโอ (ใช้ประกอบการวิเคราะห์):\n${transcript.substring(0, 10000)}`
+      : '';
+
     return `คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์การสอนและการประเมินครู
-กรุณาดูวิดีโอการสอนนี้แล้ววิเคราะห์อย่างละเอียด
+กรุณาดูวิดีโอการสอนนี้แล้ววิเคราะห์อย่างละเอียด${transcriptSection}
 
 ให้ผลลัพธ์ในรูป JSON (ไม่มี markdown code fence) ที่มี key ดังนี้:
 {
