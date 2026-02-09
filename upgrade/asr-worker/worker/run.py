@@ -99,6 +99,19 @@ except Exception as e:
 
 # ─── Core functions ───
 
+VIDEO_EXTENSIONS = (".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v", ".flv", ".wmv")
+
+
+def find_video_file(raw_dir: str) -> str | None:
+    """Find the first video file in the raw directory (any extension)."""
+    if not os.path.isdir(raw_dir):
+        return None
+    for f in os.listdir(raw_dir):
+        if f.lower().endswith(VIDEO_EXTENSIONS):
+            return os.path.join(raw_dir, f)
+    return None
+
+
 def ffmpeg_extract_audio(video_path: str, audio_path: str) -> int:
     """Extract mono 16kHz WAV. Returns file size in bytes."""
     cmd = [
@@ -194,7 +207,15 @@ def main():
         print(f"[JOB] Processing {job_id} (mode={analysis_mode})")
 
         job_dir = os.path.join(DATA_ROOT, job_id)
-        video_path = os.path.join(job_dir, "raw", "video.mp4")
+        raw_dir = os.path.join(job_dir, "raw")
+        video_path = find_video_file(raw_dir)
+        if not video_path:
+            update_job_status(job_id, "FAILED", {
+                "error_message": "No video file found in raw directory",
+                "error_code": "VIDEO_NOT_FOUND",
+            })
+            print(f"[FAILED] job_id={job_id} No video file found in {raw_dir}")
+            continue
         audio_dir = os.path.join(job_dir, "audio")
         art_dir = os.path.join(job_dir, "artifacts")
         os.makedirs(audio_dir, exist_ok=True)

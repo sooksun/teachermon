@@ -432,6 +432,11 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     );
 
     const now = new Date();
+    // FULL mode: keep frames for 1 year
+    const framesExpiresAt = job.analysisMode === 'FULL'
+      ? new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
+      : null;
+
     await this.prisma.analysisJob.update({
       where: { id: jobId },
       data: {
@@ -443,6 +448,7 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
         aiAdvice: analysis.advice || null,
         analysisDoneAt: now,
         doneAt: now,
+        ...(framesExpiresAt && { framesExpiresAt }),
       },
     });
 
@@ -587,6 +593,12 @@ ${transcriptText.substring(0, 15000)}`;
     );
 
     const now = new Date();
+    // Reload job to check mode for frames retention
+    const updatedJob = await this.prisma.analysisJob.findUnique({ where: { id: jobId } });
+    const framesExpiresAt = updatedJob?.analysisMode === 'FULL' && updatedJob?.hasFrames
+      ? new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
+      : null;
+
     await this.prisma.analysisJob.update({
       where: { id: jobId },
       data: {
@@ -598,6 +610,7 @@ ${transcriptText.substring(0, 15000)}`;
         aiAdvice: analysis.advice || null,
         analysisDoneAt: now,
         doneAt: now,
+        ...(framesExpiresAt && { framesExpiresAt }),
       },
     });
 

@@ -108,14 +108,40 @@ enum UserRole {
   ADMIN
 }
 
+// ตัวชี้วัดการเตรียมความพร้อมครูผู้ช่วย (doc_ref6.pdf)
 enum IndicatorCode {
-  WP_1  // การออกแบบการจัดการเรียนรู้
-  WP_2  // การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ
-  WP_3  // การวัดและประเมินผล
-  ET_1  // ความเป็นครู
-  ET_2  // การจัดการชั้นเรียน
-  ET_3  // ภาวะผู้นำทางวิชาการ
-  ET_4  // การพัฒนาตนเอง
+  // ด้านวิชาชีพ - ส่วน 1: การจัดการเรียนรู้ (7 ข้อ)
+  PRO_1_1  // การวิเคราะห์หลักสูตร
+  PRO_1_2  // การออกแบบการจัดการเรียนรู้
+  PRO_1_3  // การจัดกิจกรรมการเรียนรู้
+  PRO_1_4  // การเลือกและใช้สื่อ เทคโนโลยี
+  PRO_1_5  // การวัดและประเมินผล
+  PRO_1_6  // การจัดบรรยากาศ
+  PRO_1_7  // การใช้เทคโนโลยีดิจิทัล
+  // ด้านวิชาชีพ - ส่วน 2: การส่งเสริมสนับสนุน (3 ข้อ)
+  PRO_2_1  // การจัดทำข้อมูลสารสนเทศ
+  PRO_2_2  // ระบบดูแลช่วยเหลือผู้เรียน
+  PRO_2_3  // กฎหมายและระเบียบปฏิบัติ
+  // ด้านสังคม (2 ข้อ) - ใช้ครั้งที่ 3-4
+  SOC_1    // การเรียนรู้จากกัลยาณมิตร
+  SOC_2    // การเรียนรู้เป็นเครือข่าย (PLC)
+  // ด้านคุณลักษณะ - ส่วน 1: วินัย คุณธรรม จริยธรรม (11 ข้อ)
+  PER_1_1  // มีวินัยในตนเอง
+  PER_1_2  // ตรงต่อเวลา
+  PER_1_3  // อุทิศเวลาให้แก่ทางราชการและผู้เรียน
+  PER_1_4  // เอาใจใส่ช่วยเหลือผู้เรียน
+  PER_1_5  // รักษาความสามัคคี
+  PER_1_6  // ช่วยเหลือ/ร่วมมือแก่ส่วนรวม
+  PER_1_7  // มีส่วนร่วมอนุรักษ์วัฒนธรรมไทย
+  PER_1_8  // ดำรงชีวิตตามหลักปรัชญาของเศรษฐกิจพอเพียง
+  PER_1_9  // ละเว้นอบายมุขและสิ่งเสพติด
+  PER_1_10 // ประพฤติตนเป็นแบบอย่างที่ดี
+  PER_1_11 // รักษาชื่อเสียง ปกป้องศักดิ์ศรีวิชาชีพ
+  // ด้านคุณลักษณะ - ส่วน 2: การพัฒนาตนเอง (4 ข้อ) - เน้นครั้งที่ 3-4
+  PER_2_1  // ภาษาไทยและอังกฤษ
+  PER_2_2  // เทคโนโลยีดิจิทัล
+  PER_2_3  // การเงิน
+  PER_2_4  // สุขภาพ
 }
 
 enum EvidenceType {
@@ -212,6 +238,7 @@ model School {
   
   // Relations
   teachers            Teacher[]
+  indicatorReports    IndicatorReport[] @relation("SchoolIndicatorReports")
   
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
@@ -251,6 +278,7 @@ model Teacher {
   evidencePortfolios  EvidencePortfolio[]
   user                User?
   consents            Consent[]
+  indicatorAssessments IndicatorAssessment[] @relation("TeacherIndicatorAssessments")
   
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
@@ -713,16 +741,32 @@ model BudgetTransaction {
 }
 
 // =============================================
-// INDICATOR SYSTEM (Sub-indicators Support)
+// INDICATOR SYSTEM (ตัวชี้วัดการเตรียมความพร้อมครูผู้ช่วย)
+// Based on doc_ref6.pdf
 // =============================================
+
+// ด้าน (aspect) ของตัวชี้วัด
+enum IndicatorAspect {
+  PROFESSIONAL  // ด้านวิชาชีพ
+  SOCIAL        // ด้านสังคม
+  PERSONAL      // ด้านคุณลักษณะส่วนบุคคล
+}
 
 model Indicator {
   id          String   @id @default(uuid())
-  code        String   @unique // WP_1, WP_2, ET_1, etc.
-  name        String   // ชื่อตัวชี้วัด
+  code        String   @unique // PRO_1, PRO_2, SOC, PER_1, PER_2
+  name        String   // ชื่อตัวชี้วัดหลัก
   description String   @db.Text // คำอธิบาย
-  category    String   // หมวดหมู่ (การพัฒนาการสอน, ความเป็นมืออาชีพ)
-  aspect      String   // ด้าน (วิชาชีพ, สังคม, คุณลักษณะส่วนบุคคล)
+  
+  // หมวดหมู่
+  aspect      IndicatorAspect // ด้าน (วิชาชีพ, สังคม, คุณลักษณะส่วนบุคคล)
+  section     String?  // ส่วนที่ (เช่น "การจัดการเรียนรู้", "การส่งเสริมสนับสนุน")
+  subSection  String?  @map("sub_section") // หมวดย่อย (เช่น "วินัยและการประพฤติตน", "การเสียสละและแบบอย่าง")
+  
+  // การประเมิน
+  assessmentRounds Json @default("[1,2,3,4]") @map("assessment_rounds") // ครั้งที่ใช้ประเมิน [1,2,3,4] หรือ [3,4]
+  minPassCount Int?     @map("min_pass_count") // จำนวนข้อขั้นต่ำที่ต้องผ่าน
+  
   order       Int      @default(0) // ลำดับการแสดงผล
   isActive    Boolean  @default(true) @map("is_active")
   
@@ -740,12 +784,16 @@ model Indicator {
 
 model SubIndicator {
   id          String   @id @default(uuid())
-  code        String   @unique // WP_1.1, WP_1.2, ET_P1.1, etc.
+  code        String   @unique // PRO_1.1, PRO_1.2, SOC_1, PER_1.1, etc.
   name        String   // ชื่อตัวชี้วัดย่อย
   description String   @db.Text // คำอธิบาย
-  requirements String  @db.Text // สิ่งที่ต้องปฏิบัติ
+  requirements String  @db.Text // สิ่งที่ต้องปฏิบัติ (bullet points)
   assessmentMethods String? @db.Text @map("assessment_methods") // วิธีการประเมิน
   evidenceExamples Json? @map("evidence_examples") // ตัวอย่างเอกสารหลักฐาน (Array)
+  
+  // การประเมิน
+  assessmentRounds Json @default("[1,2,3,4]") @map("assessment_rounds") // ครั้งที่ใช้ประเมิน
+  
   order       Int      @default(0) // ลำดับการแสดงผล
   
   // Relations
@@ -761,6 +809,93 @@ model SubIndicator {
   @@index([indicatorId])
   @@index([code])
   @@index([isActive])
+}
+
+// ผลการประเมินตัวชี้วัด (สำหรับครูผู้ช่วยแต่ละคน)
+model IndicatorAssessment {
+  id              String   @id @default(uuid())
+  
+  // ครูผู้ช่วยที่ถูกประเมิน
+  teacherId       String   @map("teacher_id")
+  teacher         Teacher  @relation("TeacherIndicatorAssessments", fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  // ครั้งที่ประเมิน (1-4)
+  assessmentRound Int      @map("assessment_round")
+  
+  // วันที่ประเมิน
+  assessmentDate  DateTime @map("assessment_date")
+  
+  // ผู้ประเมิน
+  assessorId      String?  @map("assessor_id")
+  
+  // สรุปผลตามด้าน
+  professionalPassed  Int  @default(0) @map("professional_passed") // จำนวนข้อที่ผ่าน ด้านวิชาชีพ
+  professionalTotal   Int  @default(10) @map("professional_total")
+  socialPassed        Int  @default(0) @map("social_passed") // จำนวนข้อที่ผ่าน ด้านสังคม
+  socialTotal         Int  @default(2) @map("social_total")
+  personalPassed      Int  @default(0) @map("personal_passed") // จำนวนข้อที่ผ่าน ด้านคุณลักษณะ
+  personalTotal       Int  @default(15) @map("personal_total")
+  
+  // ผลการประเมินรวม
+  overallResult   String?  @map("overall_result") // ผ่าน/ไม่ผ่าน
+  comments        String?  @db.Text // ความคิดเห็นเพิ่มเติม
+  
+  // รายละเอียดการประเมินแต่ละตัวชี้วัด (JSON Array)
+  // Format: [{ code: "PRO_1.1", passed: true, score: 3, evidence: "..." }, ...]
+  assessmentDetails Json?  @map("assessment_details")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  @@map("indicator_assessments")
+  @@unique([teacherId, assessmentRound])
+  @@index([teacherId])
+  @@index([assessmentRound])
+  @@index([assessmentDate])
+}
+
+// สรุปรายงานตามหมวดหมู่ตัวชี้วัด (สำหรับโรงเรียน)
+model IndicatorReport {
+  id              String   @id @default(uuid())
+  
+  // โรงเรียน
+  schoolId        String   @map("school_id")
+  school          School   @relation("SchoolIndicatorReports", fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  // ครั้งที่ประเมิน
+  assessmentRound Int      @map("assessment_round")
+  
+  // ปีการศึกษา
+  academicYear    String   @map("academic_year") // เช่น "2568"
+  
+  // วันที่สร้างรายงาน
+  reportDate      DateTime @default(now()) @map("report_date")
+  
+  // สรุปภาพรวม
+  totalTeachers       Int  @default(0) @map("total_teachers")
+  passedTeachers      Int  @default(0) @map("passed_teachers")
+  failedTeachers      Int  @default(0) @map("failed_teachers")
+  
+  // สรุปตามด้าน (เฉลี่ย %)
+  professionalAvgPercent Float @default(0) @map("professional_avg_percent")
+  socialAvgPercent       Float @default(0) @map("social_avg_percent")
+  personalAvgPercent     Float @default(0) @map("personal_avg_percent")
+  
+  // รายละเอียดแยกตามตัวชี้วัด
+  // Format: { "PRO_1.1": { passCount: 10, totalCount: 12 }, ... }
+  indicatorBreakdown Json? @map("indicator_breakdown")
+  
+  // ข้อเสนอแนะ
+  recommendations String? @db.Text
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  @@map("indicator_reports")
+  @@unique([schoolId, assessmentRound, academicYear])
+  @@index([schoolId])
+  @@index([assessmentRound])
+  @@index([academicYear])
 }
 
 // =============================================

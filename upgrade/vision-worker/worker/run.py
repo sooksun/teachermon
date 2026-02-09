@@ -15,6 +15,7 @@ import time
 import subprocess
 import traceback
 import glob as globmod
+from datetime import datetime, timedelta
 
 import redis
 import mysql.connector
@@ -131,6 +132,19 @@ def get_video_duration(video_path: str) -> float:
 
 # ─── Core functions ───
 
+VIDEO_EXTENSIONS = (".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v", ".flv", ".wmv")
+
+
+def find_video_file(raw_dir: str) -> str | None:
+    """Find the first video file in the raw directory (any extension)."""
+    if not os.path.isdir(raw_dir):
+        return None
+    for f in os.listdir(raw_dir):
+        if f.lower().endswith(VIDEO_EXTENSIONS):
+            return os.path.join(raw_dir, f)
+    return None
+
+
 def extract_frames(video_path: str, frames_dir: str) -> int:
     """Extract frames every INTERVAL seconds. Returns total bytes written."""
     os.makedirs(frames_dir, exist_ok=True)
@@ -200,7 +214,16 @@ def main():
         print(f"[JOB] Processing frames for {job_id}")
 
         job_dir = os.path.join(DATA_ROOT, job_id)
-        video_path = os.path.join(job_dir, "raw", "video.mp4")
+        raw_dir = os.path.join(job_dir, "raw")
+        video_path = find_video_file(raw_dir)
+        if not video_path:
+            update_job(job_id, {
+                "status": "FAILED",
+                "error_message": "No video file found in raw directory",
+                "error_code": "VIDEO_NOT_FOUND",
+            })
+            print(f"[FAILED] job_id={job_id} No video file found in {raw_dir}")
+            continue
         frames_dir = os.path.join(job_dir, "frames")
         art_dir = os.path.join(job_dir, "artifacts")
 
@@ -248,14 +271,18 @@ def main():
             print(f"  [4/4] Creating cover and thumbnail...")
             create_cover_and_thumb(frames_dir, art_dir)
 
-            # Update DB
+            # Update DB — set frames_expires_at = now + 365 days
+            now_dt = datetime.now()
+            expires_at = now_dt + timedelta(days=365)
+
             update_job(job_id, {
                 "status": "ASR_DONE",  # back to ASR_DONE so NestJS cron picks up for analysis
                 "frames_bytes": total_bytes,
                 "total_bytes": total_bytes,  # will be recalculated
                 "has_frames": 1,
                 "has_cover": 1,
-                "frames_done_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "frames_done_at": now_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                "frames_expires_at": expires_at.strftime("%Y-%m-%d %H:%M:%S"),
             })
 
             # Update quota
