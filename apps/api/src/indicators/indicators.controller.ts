@@ -74,8 +74,8 @@ export class IndicatorsController {
         id: string;
         code: string;
         name: string;
-        category: string;
         aspect: string;
+        section: string | null;
       };
     })[];
     total: number;
@@ -93,8 +93,8 @@ export class IndicatorsController {
         id: string;
         code: string;
         name: string;
-        category: string;
         aspect: string;
+        section: string | null;
       };
     }
   > {
@@ -107,9 +107,7 @@ export class IndicatorsController {
     @Param('aspect') aspect: string,
   ): Promise<{
     aspect: string;
-    indicators: Prisma.IndicatorGetPayload<{
-      include: { subIndicators: true };
-    }>[];
+    indicators: any[];
     total: number;
   }> {
     return this.indicatorsService.findByAspect(aspect);
@@ -121,9 +119,7 @@ export class IndicatorsController {
     @Param('category') category: string,
   ): Promise<{
     category: string;
-    indicators: Prisma.IndicatorGetPayload<{
-      include: { subIndicators: true };
-    }>[];
+    indicators: any[];
     total: number;
   }> {
     return this.indicatorsService.findByCategory(category);
