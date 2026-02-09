@@ -27,7 +27,7 @@ export class VideoAnalysisController {
 
   @Get('quota')
   async getQuota(@Request() req: any) {
-    return this.service.getQuota(req.user.userId);
+    return this.service.getQuota(req.user.sub);
   }
 
   // ───────── Jobs ─────────
@@ -35,7 +35,7 @@ export class VideoAnalysisController {
   @Post('jobs')
   async createJob(@Request() req: any, @Body() dto: CreateJobDto): Promise<any> {
     const teacherId = req.user.teacherId || null;
-    return this.service.createJob(req.user.userId, teacherId, dto);
+    return this.service.createJob(req.user.sub, teacherId, dto);
   }
 
   @Post('jobs/:id/upload')
@@ -52,27 +52,27 @@ export class VideoAnalysisController {
     if (!file) {
       throw new BadRequestException('กรุณาเลือกไฟล์ที่ต้องการอัพโหลด');
     }
-    return this.service.uploadFile(jobId, req.user.userId, file);
+    return this.service.uploadFile(jobId, req.user.sub, file);
   }
 
   @Post('jobs/:id/process')
   async processJob(@Param('id') jobId: string, @Request() req: any) {
-    return this.service.processJob(jobId, req.user.userId);
+    return this.service.processJob(jobId, req.user.sub);
   }
 
   @Get('jobs')
   async listJobs(@Request() req: any) {
-    return this.service.listJobs(req.user.userId);
+    return this.service.listJobs(req.user.sub);
   }
 
   @Get('jobs/:id')
   async getJob(@Param('id') jobId: string, @Request() req: any) {
-    return this.service.getJob(jobId, req.user.userId);
+    return this.service.getJob(jobId, req.user.sub);
   }
 
   @Delete('jobs/:id')
   async deleteJob(@Param('id') jobId: string, @Request() req: any) {
-    return this.service.deleteJob(jobId, req.user.userId);
+    return this.service.deleteJob(jobId, req.user.sub);
   }
 
   // ───────── Artifacts ─────────
@@ -85,7 +85,7 @@ export class VideoAnalysisController {
     @Res() res: Response,
   ) {
     // verify ownership
-    await this.service.getJob(jobId, req.user.userId);
+    await this.service.getJob(jobId, req.user.sub);
 
     const artPath = await this.service.getArtifactPath(jobId, filename);
     if (!artPath) {
@@ -100,7 +100,7 @@ export class VideoAnalysisController {
     @Request() req: any,
     @Res() res: Response,
   ) {
-    await this.service.getJob(jobId, req.user.userId);
+    await this.service.getJob(jobId, req.user.sub);
     const coverPath = await this.service.getCoverPath(jobId);
     if (!coverPath) {
       throw new BadRequestException('Cover image not available');
@@ -115,7 +115,7 @@ export class VideoAnalysisController {
     @Request() req: any,
     @Res() res: Response,
   ) {
-    await this.service.getJob(jobId, req.user.userId);
+    await this.service.getJob(jobId, req.user.sub);
     const framePath = await this.service.getFramePath(jobId, filename);
     if (!framePath) {
       throw new BadRequestException('Frame not found');
