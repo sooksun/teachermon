@@ -143,7 +143,7 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
         {(videoId || coverObjectUrl || rawImageUrls.length > 0) && (
           <div className="px-5 pb-4 border-b">
             {videoId && (
-              <div className="rounded-lg overflow-hidden bg-black">
+              <div className="rounded-lg overflow-hidden bg-black w-1/2 min-w-[280px] mx-auto">
                 <iframe
                   title="YouTube วิดีโอ"
                   src={`https://www.youtube.com/embed/${videoId}`}
