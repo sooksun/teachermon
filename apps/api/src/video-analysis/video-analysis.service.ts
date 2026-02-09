@@ -182,18 +182,21 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Job must be UPLOADED before processing');
     }
 
-    if (!this.redis) {
-      throw new BadRequestException(
-        'ระบบ Queue ไม่พร้อมใช้งาน (Redis ไม่ได้เชื่อมต่อ)',
-      );
+    // Try Redis queue (for GPU workers) – but don't fail if unavailable
+    if (this.redis) {
+      try {
+        const message = JSON.stringify({
+          job_id: jobId,
+          analysis_mode: job.analysisMode,
+        });
+        await this.redis.rpush('queue:jobs', message);
+        this.logger.log(`Job ${jobId} pushed to Redis queue`);
+      } catch (err) {
+        this.logger.warn(`Redis push failed – will process via Gemini directly`, err);
+      }
+    } else {
+      this.logger.log(`Redis not available – job ${jobId} will be processed via Gemini directly`);
     }
-
-    // enqueue to redis
-    const message = JSON.stringify({
-      job_id: jobId,
-      analysis_mode: job.analysisMode,
-    });
-    await this.redis.rpush('queue:jobs', message);
 
     await this.prisma.analysisJob.update({
       where: { id: jobId },
@@ -244,33 +247,17 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
   // ───────── AI Analysis (called by cron) ─────────
 
   async runPendingAnalysis() {
-    // find jobs that are ASR_DONE (TEXT_ONLY) or have frames done
-    const readyJobs = await this.prisma.analysisJob.findMany({
-      where: {
-        OR: [
-          { status: 'ASR_DONE', analysisMode: 'TEXT_ONLY' },
-          { status: 'ASR_DONE', analysisMode: 'FULL' },
-          // vision-worker will push to queue:frames after ASR_DONE
-          // and update status when frames are done
-        ],
-      },
-      take: 5,
+    // ─── 1. Direct Gemini analysis for QUEUED jobs (no worker needed) ───
+    const queuedJobs = await this.prisma.analysisJob.findMany({
+      where: { status: 'QUEUED' as any },
+      take: 2, // process 2 at a time to avoid overload
     });
 
-    for (const job of readyJobs) {
+    for (const job of queuedJobs) {
       try {
-        if (job.analysisMode === 'TEXT_ONLY') {
-          await this.analyzeTranscript(job.id);
-        } else {
-          // FULL mode: check if frames are already done
-          // If frames not started yet, skip – vision-worker will handle
-          if (job.hasFrames) {
-            await this.analyzeMultimodal(job.id);
-          }
-          // otherwise wait for frames
-        }
+        await this.analyzeWithGemini(job.id);
       } catch (err) {
-        this.logger.error(`Analysis failed for job ${job.id}`, err);
+        this.logger.error(`Direct Gemini analysis failed for job ${job.id}`, err);
         await this.prisma.analysisJob.update({
           where: { id: job.id },
           data: {
@@ -281,21 +268,168 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    // also check jobs where status=PROCESSING_FRAMES but frames are done
-    const frameDoneJobs = await this.prisma.analysisJob.findMany({
+    // ─── 2. Handle ASR_DONE jobs from GPU workers (if workers are running) ───
+    const asrDoneJobs = await this.prisma.analysisJob.findMany({
       where: {
-        status: 'PROCESSING_FRAMES' as any,
-        hasFrames: true,
+        OR: [
+          { status: 'ASR_DONE' as any, analysisMode: 'TEXT_ONLY' },
+          { status: 'ASR_DONE' as any, analysisMode: 'FULL', hasFrames: true },
+        ],
       },
-      take: 5,
+      take: 3,
     });
-    for (const job of frameDoneJobs) {
+
+    for (const job of asrDoneJobs) {
       try {
-        await this.analyzeMultimodal(job.id);
+        await this.analyzeTranscript(job.id);
       } catch (err) {
-        this.logger.error(`Analysis failed for job ${job.id}`, err);
+        this.logger.error(`Transcript analysis failed for job ${job.id}`, err);
+        await this.prisma.analysisJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'FAILED',
+            errorMessage: `Analysis error: ${err instanceof Error ? err.message : String(err)}`,
+          },
+        });
       }
     }
+  }
+
+  // ───────── Direct Gemini multimodal analysis (no worker) ─────────
+
+  private async analyzeWithGemini(jobId: string) {
+    const job = await this.prisma.analysisJob.findUnique({ where: { id: jobId } });
+    if (!job) throw new Error('Job not found');
+
+    await this.prisma.analysisJob.update({
+      where: { id: jobId },
+      data: { status: 'ANALYZING' },
+    });
+
+    // find uploaded media file
+    const rawDir = path.join(this.dataRoot, jobId, 'raw');
+    let mediaFile: string | null = null;
+    try {
+      const files = await fs.readdir(rawDir);
+      mediaFile = files.find((f) =>
+        /\.(mp4|webm|mov|avi|mkv|jpg|jpeg|png|gif|bmp|webp)$/i.test(f),
+      ) || null;
+    } catch {
+      // dir might not exist
+    }
+
+    if (!mediaFile) {
+      throw new Error('ไม่พบไฟล์สื่อที่อัพโหลด');
+    }
+
+    const filePath = path.join(rawDir, mediaFile);
+    const mimeType = job.mimeType || this.guessMimeType(mediaFile);
+    const isImage = /^image\//i.test(mimeType);
+
+    this.logger.log(`Analyzing ${isImage ? 'image' : 'video'} via Gemini: ${mediaFile} (${mimeType})`);
+
+    const prompt = isImage
+      ? this.buildImageAnalysisPrompt()
+      : this.buildVideoAnalysisPrompt();
+
+    const result = await this.geminiAI.generateWithMedia(prompt, filePath, mimeType);
+
+    // parse AI response
+    let analysis: any;
+    try {
+      let cleaned = result.text.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      analysis = JSON.parse(cleaned);
+    } catch {
+      analysis = {
+        summary: result.text.substring(0, 1000),
+        strengths: [],
+        improvements: [],
+        advice: result.text,
+      };
+    }
+
+    // write report to disk
+    const artDir = path.join(this.dataRoot, jobId, 'artifacts');
+    await fs.mkdir(artDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artDir, 'report.json'),
+      JSON.stringify(analysis, null, 2),
+      'utf-8',
+    );
+
+    const now = new Date();
+    await this.prisma.analysisJob.update({
+      where: { id: jobId },
+      data: {
+        status: 'DONE',
+        hasReport: true,
+        transcriptSummary: analysis.summary || null,
+        analysisReport: analysis,
+        evaluationResult: analysis.indicators || null,
+        aiAdvice: analysis.advice || null,
+        analysisDoneAt: now,
+        doneAt: now,
+      },
+    });
+
+    this.logger.log(`Gemini analysis DONE for job ${jobId}`);
+  }
+
+  private buildVideoAnalysisPrompt(): string {
+    return `คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์การสอนและการประเมินครู
+กรุณาดูวิดีโอการสอนนี้แล้ววิเคราะห์อย่างละเอียด
+
+ให้ผลลัพธ์ในรูป JSON (ไม่มี markdown code fence) ที่มี key ดังนี้:
+{
+  "summary": "สรุปภาพรวมการสอน (3-5 ประโยค) อธิบายสิ่งที่เห็นในวิดีโอ",
+  "strengths": ["จุดแข็ง 1", "จุดแข็ง 2", ...],
+  "improvements": ["ข้อเสนอปรับปรุง 1", "ข้อเสนอปรับปรุง 2", ...],
+  "teachingTechniques": ["เทคนิคที่ใช้ 1", "เทคนิคที่ใช้ 2", ...],
+  "studentEngagement": "ระดับการมีส่วนร่วมของผู้เรียน (สูง/ปานกลาง/ต่ำ) + คำอธิบาย",
+  "indicators": {
+    "WP_1": "การออกแบบการจัดการเรียนรู้ – ระดับ (ดีมาก/ดี/พอใช้/ต้องปรับปรุง) + เหตุผล",
+    "WP_2": "การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ – ระดับ + เหตุผล",
+    "WP_3": "การวัดและประเมินผล – ระดับ + เหตุผล",
+    "ET_1": "ความเป็นครู – ระดับ + เหตุผล",
+    "ET_2": "การจัดการชั้นเรียน – ระดับ + เหตุผล",
+    "ET_3": "ภาวะผู้นำทางวิชาการ – ระดับ + เหตุผล",
+    "ET_4": "การพัฒนาตนเอง – ระดับ + เหตุผล"
+  },
+  "overallScore": "คะแนนรวม 1-5",
+  "advice": "คำแนะนำเชิงปฏิบัติสำหรับครูในการพัฒนา (3-5 ประโยค)"
+}
+
+สำคัญ: ตอบเป็น JSON เท่านั้น ภาษาไทย`;
+  }
+
+  private buildImageAnalysisPrompt(): string {
+    return `คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์สื่อการสอนและหลักฐานการปฏิบัติงานครู
+กรุณาดูรูปภาพนี้แล้ววิเคราะห์อย่างละเอียด (อาจเป็นภาพกิจกรรมการสอน, ผลงานนักเรียน, สื่อการสอน, หรือหลักฐานอื่นๆ)
+
+ให้ผลลัพธ์ในรูป JSON (ไม่มี markdown code fence) ที่มี key ดังนี้:
+{
+  "summary": "สรุปสิ่งที่เห็นในรูปภาพ (3-5 ประโยค)",
+  "strengths": ["จุดแข็ง 1", "จุดแข็ง 2", ...],
+  "improvements": ["ข้อเสนอปรับปรุง 1", "ข้อเสนอปรับปรุง 2", ...],
+  "teachingTechniques": ["เทคนิคที่เกี่ยวข้อง 1", ...],
+  "studentEngagement": "การมีส่วนร่วมของผู้เรียนที่เห็นจากภาพ",
+  "indicators": {
+    "WP_1": "การออกแบบการจัดการเรียนรู้ – ระดับ + เหตุผล",
+    "WP_2": "การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ – ระดับ + เหตุผล",
+    "WP_3": "การวัดและประเมินผล – ระดับ + เหตุผล",
+    "ET_1": "ความเป็นครู – ระดับ + เหตุผล",
+    "ET_2": "การจัดการชั้นเรียน – ระดับ + เหตุผล",
+    "ET_3": "ภาวะผู้นำทางวิชาการ – ระดับ + เหตุผล",
+    "ET_4": "การพัฒนาตนเอง – ระดับ + เหตุผล"
+  },
+  "overallScore": "คะแนนรวม 1-5",
+  "advice": "คำแนะนำสำหรับครูในการพัฒนา (3-5 ประโยค)"
+}
+
+สำคัญ: ตอบเป็น JSON เท่านั้น ภาษาไทย`;
   }
 
   private async analyzeTranscript(jobId: string) {
@@ -323,27 +457,7 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Transcript ว่างเปล่า');
     }
 
-    // AI Analysis using Gemini
-    const prompt = `คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์การสอน กรุณาวิเคราะห์ transcript การสอนต่อไปนี้
-และให้ผลลัพธ์ในรูป JSON (ไม่มี markdown code fence) ที่มี key ดังนี้:
-{
-  "summary": "สรุปภาพรวมการสอน (3-5 ประโยค)",
-  "strengths": ["จุดแข็ง 1", "จุดแข็ง 2", ...],
-  "improvements": ["ข้อเสนอปรับปรุง 1", "ข้อเสนอปรับปรุง 2", ...],
-  "teachingTechniques": ["เทคนิคที่ใช้ 1", "เทคนิคที่ใช้ 2", ...],
-  "studentEngagement": "ระดับการมีส่วนร่วมของผู้เรียน (สูง/ปานกลาง/ต่ำ) + คำอธิบาย",
-  "indicators": {
-    "WP_1": "ระดับ (ดีมาก/ดี/พอใช้/ต้องปรับปรุง) + เหตุผล",
-    "WP_2": "...",
-    "WP_3": "...",
-    "ET_1": "...",
-    "ET_2": "...",
-    "ET_3": "...",
-    "ET_4": "..."
-  },
-  "overallScore": "คะแนนรวม 1-5",
-  "advice": "คำแนะนำสำหรับครูในการพัฒนา (3-5 ประโยค)"
-}
+    const prompt = `${this.buildVideoAnalysisPrompt()}
 
 Transcript:
 ${transcriptText.substring(0, 15000)}`;
@@ -351,7 +465,6 @@ ${transcriptText.substring(0, 15000)}`;
     const result = await this.geminiAI.generateText(prompt);
     let analysis: any;
     try {
-      // strip markdown code fences if present
       let cleaned = result.text.trim();
       if (cleaned.startsWith('```')) {
         cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
@@ -366,8 +479,8 @@ ${transcriptText.substring(0, 15000)}`;
       };
     }
 
-    // write report to disk
     const artDir = path.join(this.dataRoot, jobId, 'artifacts');
+    await fs.mkdir(artDir, { recursive: true });
     await fs.writeFile(
       path.join(artDir, 'report.json'),
       JSON.stringify(analysis, null, 2),
@@ -389,23 +502,25 @@ ${transcriptText.substring(0, 15000)}`;
       },
     });
 
-    this.logger.log(`Analysis DONE for job ${jobId}`);
+    this.logger.log(`Transcript analysis DONE for job ${jobId}`);
   }
 
-  private async analyzeMultimodal(jobId: string) {
-    // FULL mode: transcript + frame references
-    // For now, use same transcript analysis + note frames available
-    await this.analyzeTranscript(jobId);
-
-    // set frames expiration (1 year from done)
-    const now = new Date();
-    const expiresAt = new Date(now);
-    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-
-    await this.prisma.analysisJob.update({
-      where: { id: jobId },
-      data: { framesExpiresAt: expiresAt },
-    });
+  private guessMimeType(filename: string): string {
+    const ext = path.extname(filename).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+      '.mov': 'video/quicktime',
+      '.avi': 'video/x-msvideo',
+      '.mkv': 'video/x-matroska',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.bmp': 'image/bmp',
+    };
+    return mimeMap[ext] || 'application/octet-stream';
   }
 
   // ───────── Retention Cleanup ─────────

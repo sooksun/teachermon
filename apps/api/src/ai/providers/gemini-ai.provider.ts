@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import { GoogleAIFileManager, FileState } from '@google/generative-ai/server';
+import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
+import * as path from 'path';
 
 /**
  * Gemini AI Provider
@@ -12,9 +16,11 @@ export class GeminiAIProvider {
   private genAI: GoogleGenerativeAI;
   private model: GenerativeModel;
   private isEnabled: boolean;
+  private apiKey: string;
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+    this.apiKey = apiKey || '';
     const modelName = this.configService.get<string>('GEMINI_MODEL', 'gemini-2.0-flash');
     this.isEnabled = this.configService.get<boolean>('AI_ENABLED', true);
 
@@ -68,6 +74,88 @@ export class GeminiAIProvider {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       throw new Error('Failed to generate AI response: ' + errorMessage);
     }
+  }
+
+  /**
+   * วิเคราะห์ไฟล์สื่อ (video/image) ด้วย Gemini multimodal
+   * - ไฟล์ ≤ 20MB: ส่งเป็น inline base64
+   * - ไฟล์ > 20MB: ใช้ Gemini File API upload แล้ววิเคราะห์
+   */
+  async generateWithMedia(
+    prompt: string,
+    filePath: string,
+    mimeType: string,
+  ): Promise<{ text: string; tokensUsed?: number; model: string }> {
+    if (!this.isEnabled) {
+      throw new Error('AI is disabled. GEMINI_API_KEY is not configured.');
+    }
+
+    const stats = await fs.stat(filePath);
+    const fileSize = stats.size;
+    const INLINE_LIMIT = 20 * 1024 * 1024; // 20 MB
+
+    if (fileSize <= INLINE_LIMIT) {
+      // ── Small file → inline base64 ──
+      this.logger.log(`Analyzing file inline (${(fileSize / 1024 / 1024).toFixed(1)} MB): ${path.basename(filePath)}`);
+      const data = await fs.readFile(filePath);
+      const base64 = data.toString('base64');
+
+      const result = await this.model.generateContent([
+        { inlineData: { mimeType, data: base64 } },
+        { text: prompt },
+      ]);
+      const response = await result.response;
+      return { text: response.text(), model: this.getModelName() };
+    }
+
+    // ── Large file → Gemini File API ──
+    this.logger.log(`Uploading large file via File API (${(fileSize / 1024 / 1024).toFixed(1)} MB): ${path.basename(filePath)}`);
+    const fileManager = new GoogleAIFileManager(this.apiKey);
+
+    const uploadResult = await fileManager.uploadFile(filePath, {
+      mimeType,
+      displayName: path.basename(filePath),
+    });
+
+    // Wait until Gemini finishes processing the file
+    let file = uploadResult.file;
+    let waitMs = 5000;
+    const maxWait = 10 * 60 * 1000; // 10 minutes max
+    let totalWait = 0;
+
+    while (file.state === FileState.PROCESSING) {
+      if (totalWait >= maxWait) {
+        throw new Error('File processing timeout (10 min)');
+      }
+      this.logger.log(`File still processing... waiting ${waitMs / 1000}s`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      totalWait += waitMs;
+      file = await fileManager.getFile(file.name);
+      waitMs = Math.min(waitMs * 1.5, 30000); // exponential backoff, max 30s
+    }
+
+    if (file.state === FileState.FAILED) {
+      throw new Error('Gemini file processing failed');
+    }
+
+    this.logger.log(`File ready (${file.name}), generating analysis...`);
+    const result = await this.model.generateContent([
+      {
+        fileData: {
+          mimeType: file.mimeType,
+          fileUri: file.uri,
+        },
+      },
+      { text: prompt },
+    ]);
+    const response = await result.response;
+
+    // Cleanup: delete temporary file from Gemini storage
+    fileManager.deleteFile(file.name).catch((e) => {
+      this.logger.warn(`Failed to delete temp file from Gemini: ${e.message}`);
+    });
+
+    return { text: response.text(), model: this.getModelName() };
   }
 
   /**
