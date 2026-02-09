@@ -14,6 +14,7 @@ import Redis from 'ioredis';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
+import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import * as https from 'https';
 import * as http from 'http';
@@ -557,6 +558,17 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     await fs.mkdir(artDir, { recursive: true });
 
     this.logger.log(`Analyzing ${isImage ? 'image' : 'video'} via Gemini: ${mediaFile} (${mimeType})`);
+
+    // ─── Extract video cover (thumbnail) for UPLOAD/GDRIVE ───
+    if (isVideo) {
+      const coverOk = await this.extractVideoCover(filePath, path.join(artDir, 'cover.jpg'));
+      if (coverOk) {
+        await this.prisma.analysisJob.update({
+          where: { id: jobId },
+          data: { hasCover: true },
+        });
+      }
+    }
 
     // ─── Step 1: Transcript (ถอดเสียงจากวิดีโอ) ───
     let transcriptText = '';
@@ -1109,6 +1121,34 @@ ${transcriptText.substring(0, 15000)}`;
     } catch {
       return null;
     }
+  }
+
+  /** Extract a single frame from video as cover.jpg using ffmpeg. */
+  private async extractVideoCover(videoPath: string, outputPath: string): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const proc = spawn(
+        'ffmpeg',
+        ['-y', '-i', videoPath, '-ss', '00:00:01', '-vframes', '1', '-q:v', '2', outputPath],
+        { stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+      let stderr = '';
+      proc.stderr?.on('data', (chunk) => {
+        stderr += String(chunk);
+      });
+      proc.on('close', (code) => {
+        if (code === 0) {
+          this.logger.log(`Video cover extracted: ${outputPath}`);
+          resolve(true);
+        } else {
+          this.logger.warn(`ffmpeg cover extraction failed (code ${code}): ${stderr.slice(-200)}`);
+          resolve(false);
+        }
+      });
+      proc.on('error', (err) => {
+        this.logger.warn(`ffmpeg spawn error: ${err.message}`);
+        resolve(false);
+      });
+    });
   }
 
   async getCoverPath(jobId: string): Promise<string | null> {

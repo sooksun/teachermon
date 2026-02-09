@@ -44,7 +44,7 @@ RUN pnpm --filter @teachermon/api build
 FROM node:20-bookworm-slim AS production
 
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
-    ca-certificates curl openssl \
+    ca-certificates curl openssl ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
