@@ -96,7 +96,7 @@ export class DevelopmentSummaryController {
     @Param('teacherId') teacherId: string,
     @Query('round') round?: string,
     @Query('year') year?: string,
-  ) {
+  ): Promise<any> {
     const assessmentRound = round ? parseInt(round, 10) : 1;
     const academicYear = year || '2568';
 
@@ -124,7 +124,7 @@ export class DevelopmentSummaryController {
     @Request() req: any,
     @Query('round') round?: string,
     @Query('year') year?: string,
-  ) {
+  ): Promise<any> {
     const teacherId = req.user.teacherId;
     if (!teacherId) {
       return { success: false, message: 'ไม่พบข้อมูลครูผู้ช่วย' };
@@ -151,7 +151,7 @@ export class DevelopmentSummaryController {
    */
   @ApiOperation({ summary: 'Get all summaries for a teacher' })
   @Get('teacher/:teacherId/all')
-  async getAllSummaries(@Param('teacherId') teacherId: string) {
+  async getAllSummaries(@Param('teacherId') teacherId: string): Promise<any> {
     const summaries = await this.summaryService.getAllSummaries(teacherId);
     return { success: true, data: summaries };
   }
@@ -161,7 +161,7 @@ export class DevelopmentSummaryController {
    */
   @ApiOperation({ summary: 'Get all my summaries' })
   @Get('me/all')
-  async getAllMySummaries(@Request() req: any) {
+  async getAllMySummaries(@Request() req: any): Promise<any> {
     const teacherId = req.user.teacherId;
     if (!teacherId) {
       return { success: false, data: [] };

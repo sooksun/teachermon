@@ -595,7 +595,7 @@ export class CompletenessService {
         },
       }),
       // PLC Activities
-      this.prisma.plcActivity.findMany({
+      this.prisma.pLCActivity.findMany({
         where: { teacherId },
         select: {
           id: true,

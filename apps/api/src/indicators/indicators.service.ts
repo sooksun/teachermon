@@ -93,8 +93,8 @@ export class IndicatorsService {
         id: string;
         code: string;
         name: string;
-        category: string;
         aspect: string;
+        section: string | null;
       };
     })[];
     total: number;
@@ -115,8 +115,8 @@ export class IndicatorsService {
             id: true,
             code: true,
             name: true,
-            category: true,
             aspect: true,
+            section: true,
           },
         },
       },
@@ -126,7 +126,7 @@ export class IndicatorsService {
     });
 
     return {
-      data: subIndicators,
+      data: subIndicators as any,
       total: subIndicators.length,
     };
   }
@@ -142,8 +142,8 @@ export class IndicatorsService {
         id: string;
         code: string;
         name: string;
-        category: string;
         aspect: string;
+        section: string | null;
       };
     }
   > {
@@ -158,8 +158,8 @@ export class IndicatorsService {
             id: true,
             code: true,
             name: true,
-            category: true,
             aspect: true,
+            section: true,
           },
         },
       },
@@ -169,7 +169,7 @@ export class IndicatorsService {
       throw new NotFoundException(`Sub-indicator with code ${code} not found`);
     }
 
-    return subIndicator;
+    return subIndicator as any;
   }
 
   /**
@@ -177,14 +177,12 @@ export class IndicatorsService {
    */
   async findByAspect(aspect: string): Promise<{
     aspect: string;
-    indicators: Prisma.IndicatorGetPayload<{
-      include: { subIndicators: true };
-    }>[];
+    indicators: any[];
     total: number;
   }> {
     const indicators = await this.prisma.indicator.findMany({
       where: {
-        aspect,
+        aspect: aspect as any,
         isActive: true,
       },
       include: {
@@ -214,14 +212,13 @@ export class IndicatorsService {
    */
   async findByCategory(category: string): Promise<{
     category: string;
-    indicators: Prisma.IndicatorGetPayload<{
-      include: { subIndicators: true };
-    }>[];
+    indicators: any[];
     total: number;
   }> {
+    // category maps to section in the new schema
     const indicators = await this.prisma.indicator.findMany({
       where: {
-        category,
+        section: category,
         isActive: true,
       },
       include: {

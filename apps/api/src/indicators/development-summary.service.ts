@@ -254,7 +254,7 @@ export class DevelopmentSummaryService {
     teacherId: string,
     assessmentRound: number,
     academicYear: string = '2568',
-  ) {
+  ): Promise<any> {
     return this.prisma.developmentSummary.findUnique({
       where: {
         teacherId_assessmentRound_academicYear: {
@@ -269,7 +269,7 @@ export class DevelopmentSummaryService {
   /**
    * ดึงสรุปทั้งหมดของครู
    */
-  async getAllSummaries(teacherId: string) {
+  async getAllSummaries(teacherId: string): Promise<any[]> {
     return this.prisma.developmentSummary.findMany({
       where: { teacherId },
       orderBy: [{ assessmentRound: 'desc' }, { academicYear: 'desc' }],
