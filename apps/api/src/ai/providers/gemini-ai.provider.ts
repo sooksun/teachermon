@@ -21,7 +21,7 @@ export class GeminiAIProvider {
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     this.apiKey = apiKey || '';
-    const modelName = this.configService.get<string>('GEMINI_MODEL', 'gemini-2.0-flash');
+    const modelName = this.configService.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
     this.isEnabled = this.configService.get<boolean>('AI_ENABLED', true);
 
     if (!apiKey || apiKey === 'your-gemini-api-key-here' || apiKey.trim() === '') {
@@ -67,7 +67,7 @@ export class GeminiAIProvider {
       return {
         text,
         tokensUsed: estimatedTokens,
-        model: this.configService.get<string>('GEMINI_MODEL', 'gemini-2.0-flash'),
+        model: this.configService.get<string>('GEMINI_MODEL', 'gemini-2.5-flash'),
       };
     } catch (error) {
       this.logger.error('Gemini API error', error);
@@ -346,6 +346,6 @@ Indicators ที่มี:
    * ดึงชื่อ model ที่ใช้
    */
   getModelName(): string {
-    return this.configService.get<string>('GEMINI_MODEL', 'gemini-2.0-flash');
+    return this.configService.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
   }
 }
