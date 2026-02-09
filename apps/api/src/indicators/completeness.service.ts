@@ -314,15 +314,15 @@ export class CompletenessService {
         return evidence.mentoringVisits.length > 0;
       case 'OBSERVATION_REPORT':
         return evidence.mentoringVisits.some(
-          (v) => v.observationNotes || v.feedbackSummary,
+          (v) => v.strengths || v.challenges || v.suggestions,
         );
       case 'MENTOR_APPLY':
         return evidence.journals.some(
           (j) =>
-            j.content &&
-            (j.content.includes('นิเทศ') ||
-              j.content.includes('ครูพี่เลี้ยง') ||
-              j.content.includes('Mentor')),
+            j.reflectionText &&
+            (j.reflectionText.includes('นิเทศ') ||
+              j.reflectionText.includes('ครูพี่เลี้ยง') ||
+              j.reflectionText.includes('Mentor')),
         );
 
       // SOC_2 - PLC
@@ -330,7 +330,7 @@ export class CompletenessService {
         return evidence.plcActivities.length > 0;
       case 'RESULT_NOTE':
         return evidence.journals.some(
-          (j) => j.content && j.content.includes('PLC'),
+          (j) => j.reflectionText && j.reflectionText.includes('PLC'),
         );
 
       // PRO_1.2 - Design
@@ -505,9 +505,9 @@ export class CompletenessService {
   }
 
   /**
-   * รวบรวมหลักฐานทั้งหมดของครู
+   * รวบรวมหลักฐานทั้งหมดของครู (rich data for summaries)
    */
-  private async gatherEvidence(teacherId: string): Promise<TeacherEvidence> {
+  async gatherEvidence(teacherId: string): Promise<TeacherEvidence> {
     const [
       analysisJobs,
       journals,
@@ -516,17 +516,28 @@ export class CompletenessService {
       plcActivities,
       indicatorAssessments,
     ] = await Promise.all([
-      // Video Analysis Jobs
+      // Video Analysis Jobs — include AI results for summary
       this.prisma.analysisJob.findMany({
         where: { teacherId },
         select: {
           id: true,
           status: true,
+          analysisMode: true,
+          sourceType: true,
           hasTranscript: true,
+          hasFrames: true,
           hasReport: true,
+          hasCover: true,
           analysisReport: true,
+          transcriptSummary: true,
+          evaluationResult: true,
+          aiAdvice: true,
           originalFilename: true,
           mimeType: true,
+          rawBytes: true,
+          totalBytes: true,
+          doneAt: true,
+          createdAt: true,
         },
       }),
       // Reflective Journals
@@ -534,19 +545,37 @@ export class CompletenessService {
         where: { teacherId },
         select: {
           id: true,
-          content: true,
+          month: true,
+          reflectionText: true,
+          successStory: true,
+          difficulty: true,
+          supportRequest: true,
           createdAt: true,
         },
       }),
-      // Evidence Portfolios
+      // Evidence Portfolios — include full details
       this.prisma.evidencePortfolio.findMany({
         where: { teacherId },
         select: {
           id: true,
-          title: true,
-          indicatorCodes: true,
-          evidenceType: true,
+          itemType: true,
+          originalFilename: true,
+          standardFilename: true,
           fileUrl: true,
+          fileSize: true,
+          mimeType: true,
+          videoUrl: true,
+          videoTitle: true,
+          videoDescription: true,
+          videoPlatform: true,
+          evidenceType: true,
+          indicatorCodes: true,
+          aiSummary: true,
+          aiKeywords: true,
+          aiQualityCheck: true,
+          aiSuggestions: true,
+          isVerified: true,
+          createdAt: true,
         },
       }),
       // Mentoring Visits
@@ -554,9 +583,15 @@ export class CompletenessService {
         where: { teacherId },
         select: {
           id: true,
-          observationNotes: true,
-          feedbackSummary: true,
           visitDate: true,
+          visitType: true,
+          observer: true,
+          focusArea: true,
+          strengths: true,
+          challenges: true,
+          suggestions: true,
+          attachments: true,
+          createdAt: true,
         },
       }),
       // PLC Activities
@@ -564,8 +599,12 @@ export class CompletenessService {
         where: { teacherId },
         select: {
           id: true,
-          activityDate: true,
+          plcDate: true,
+          plcLevel: true,
           topic: true,
+          role: true,
+          takeaway: true,
+          createdAt: true,
         },
       }),
       // Indicator Assessments
@@ -574,6 +613,16 @@ export class CompletenessService {
         select: {
           id: true,
           assessmentRound: true,
+          assessmentDate: true,
+          assessorId: true,
+          professionalPassed: true,
+          professionalTotal: true,
+          socialPassed: true,
+          socialTotal: true,
+          personalPassed: true,
+          personalTotal: true,
+          overallResult: true,
+          comments: true,
           assessmentDetails: true,
         },
       }).catch(() => []), // ถ้ายังไม่มี table ให้คืน array ว่าง
@@ -591,10 +640,10 @@ export class CompletenessService {
 }
 
 // =============================================
-// Internal types
+// Internal types (exported for reuse)
 // =============================================
 
-interface TeacherEvidence {
+export interface TeacherEvidence {
   analysisJobs: any[];
   journals: any[];
   portfolios: any[];

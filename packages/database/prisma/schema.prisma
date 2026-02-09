@@ -279,6 +279,7 @@ model Teacher {
   user                User?
   consents            Consent[]
   indicatorAssessments IndicatorAssessment[] @relation("TeacherIndicatorAssessments")
+  developmentSummaries DevelopmentSummary[]
   
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
@@ -987,6 +988,59 @@ model AnalysisJob {
   @@index([createdAt])
   @@index([framesExpiresAt])
   @@map("analysis_job")
+}
+
+// =============================================
+// Development Summary (สรุปผลการพัฒนาอย่างเข้ม)
+// =============================================
+
+model DevelopmentSummary {
+  id                  String    @id @default(uuid())
+
+  // Owner
+  teacherId           String    @map("teacher_id")
+  assessmentRound     Int       @map("assessment_round") // ครั้งที่ 1-4
+  academicYear        String    @default("2568") @map("academic_year")
+
+  // Evidence counts
+  totalEvidence       Int       @default(0) @map("total_evidence")
+  totalAnalysisJobs   Int       @default(0) @map("total_analysis_jobs")
+  totalVideoLinks     Int       @default(0) @map("total_video_links")
+  totalFiles          Int       @default(0) @map("total_files")
+
+  // Completeness scores (snapshot at generation time)
+  overallScore        Int       @default(0) @map("overall_score")
+  professionalScore   Int       @default(0) @map("professional_score")
+  socialScore         Int?      @map("social_score")
+  personalScore       Int       @default(0) @map("personal_score")
+  overallPassed       Boolean   @default(false) @map("overall_passed")
+
+  // Structured data (JSON)
+  evidenceByIndicator Json?     @map("evidence_by_indicator")  // { [indicatorId]: { files: [], videos: [], analyses: [] } }
+  aiInsights          Json?     @map("ai_insights")            // AI-generated insights per domain
+  domainSummaries     Json?     @map("domain_summaries")       // { PROFESSIONAL: { ... }, SOCIAL: { ... }, PERSONAL: { ... } }
+
+  // Narrative summary
+  summaryNarrative    String?   @map("summary_narrative") @db.Text
+
+  // Deck/Slides
+  deckPath            String?   @map("deck_path")
+  deckMarkdown        String?   @map("deck_markdown") @db.LongText
+
+  // Status
+  status              String    @default("DRAFT") // DRAFT, GENERATED, FINALIZED
+
+  // Relations
+  teacher             Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  generatedAt         DateTime  @default(now()) @map("generated_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@unique([teacherId, assessmentRound, academicYear])
+  @@index([teacherId])
+  @@index([status])
+  @@map("development_summary")
 }
 
 model UserMediaQuota {
