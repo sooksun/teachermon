@@ -15,6 +15,8 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import * as https from 'https';
+import * as http from 'http';
 
 const DEFAULT_QUOTA = 1_073_741_824; // 1 GB
 
@@ -106,12 +108,19 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
 
   // ───────── Job CRUD ─────────
 
-  async createJob(userId: string, teacherId: string | null, dto: { analysisMode: string; sourceType?: string; originalFilename?: string }): Promise<any> {
+  async createJob(userId: string, teacherId: string | null, dto: { analysisMode: string; sourceType?: string; originalFilename?: string; sourceUrl?: string; description?: string }): Promise<any> {
     // check quota before allowing creation
     const quota = await this.getQuota(userId);
     if (quota.remainingBytes <= 0) {
       throw new ConflictException('โควต้าเต็ม – ไม่สามารถสร้างงานใหม่ได้ กรุณาลบงานเก่า');
     }
+
+    const sourceType = dto.sourceType || 'UPLOAD';
+
+    // For URL-based sources, set status to UPLOADED directly
+    const initialStatus = (sourceType === 'GDRIVE' || sourceType === 'YOUTUBE')
+      ? 'UPLOADED'
+      : 'UPLOADING';
 
     const jobId = uuidv4();
     const jobDir = path.join(this.dataRoot, jobId);
@@ -124,9 +133,11 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
         userId,
         teacherId,
         analysisMode: dto.analysisMode as any,
-        sourceType: (dto.sourceType || 'UPLOAD') as any,
+        sourceType: sourceType as any,
         originalFilename: dto.originalFilename || null,
-        status: 'UPLOADING',
+        sourceUrl: dto.sourceUrl || null,
+        description: dto.description || null,
+        status: initialStatus as any,
       },
     });
 
@@ -172,6 +183,213 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     await this.addQuotaUsage(userId, rawBytes);
 
     return { status: 'UPLOADED', rawBytes };
+  }
+
+  /**
+   * Upload multiple images for IMAGES source type (3-5 images)
+   */
+  async uploadMultipleImages(jobId: string, userId: string, files: Express.Multer.File[]) {
+    const job = await this.prisma.analysisJob.findUnique({ where: { id: jobId } });
+    if (!job) throw new NotFoundException('Job not found');
+    if (job.userId !== userId) throw new BadRequestException('Unauthorized');
+    if (job.status !== 'UPLOADING') {
+      throw new BadRequestException('Job is not in UPLOADING state');
+    }
+
+    if (files.length < 1 || files.length > 5) {
+      throw new BadRequestException('กรุณาอัพโหลด 1-5 รูปภาพ');
+    }
+
+    const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+    const quota = await this.getQuota(userId);
+    if (totalSize > quota.remainingBytes) {
+      throw new ConflictException(
+        `ไฟล์รวม ${(totalSize / 1024 / 1024).toFixed(1)} MB เกินโควต้าที่เหลือ ${(quota.remainingBytes / 1024 / 1024).toFixed(1)} MB`,
+      );
+    }
+
+    const rawDir = path.join(this.dataRoot, jobId, 'raw');
+    await fs.mkdir(rawDir, { recursive: true });
+
+    for (let i = 0; i < files.length; i++) {
+      const ext = path.extname(files[i].originalname || '.jpg') || '.jpg';
+      const destFile = path.join(rawDir, `image_${i + 1}${ext}`);
+      await fs.writeFile(destFile, files[i].buffer);
+    }
+
+    await this.prisma.analysisJob.update({
+      where: { id: jobId },
+      data: {
+        status: 'UPLOADED',
+        rawBytes: totalSize,
+        totalBytes: totalSize,
+        mimeType: files[0].mimetype,
+        originalFilename: files.map((f) => f.originalname).join(', '),
+        imageCount: files.length,
+        uploadedAt: new Date(),
+      },
+    });
+    await this.addQuotaUsage(userId, totalSize);
+
+    return { status: 'UPLOADED', rawBytes: totalSize, imageCount: files.length };
+  }
+
+  /**
+   * Download file from Google Drive URL and save to job directory
+   */
+  async downloadFromGDrive(jobId: string, userId: string): Promise<void> {
+    const job = await this.prisma.analysisJob.findUnique({ where: { id: jobId } });
+    if (!job || !job.sourceUrl) throw new BadRequestException('Job or source URL not found');
+
+    const fileId = this.extractGDriveFileId(job.sourceUrl);
+    if (!fileId) throw new BadRequestException('ไม่สามารถอ่าน Google Drive link ได้ กรุณาตรวจสอบ URL');
+
+    const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+    this.logger.log(`Downloading from Google Drive: ${fileId}`);
+
+    try {
+      const buffer = await this.downloadFile(downloadUrl);
+
+      const rawDir = path.join(this.dataRoot, jobId, 'raw');
+      await fs.mkdir(rawDir, { recursive: true });
+
+      // default to mp4 for videos
+      const destFile = path.join(rawDir, `video.mp4`);
+      await fs.writeFile(destFile, buffer);
+
+      const rawBytes = buffer.byteLength;
+      const quota = await this.getQuota(userId);
+      if (rawBytes > quota.remainingBytes) {
+        await fs.unlink(destFile);
+        throw new ConflictException('ไฟล์ขนาดเกินโควต้าที่เหลือ');
+      }
+
+      await this.prisma.analysisJob.update({
+        where: { id: jobId },
+        data: {
+          rawBytes,
+          totalBytes: rawBytes,
+          mimeType: 'video/mp4',
+          uploadedAt: new Date(),
+        },
+      });
+      await this.addQuotaUsage(userId, rawBytes);
+
+      this.logger.log(`GDrive file downloaded: ${rawBytes} bytes`);
+    } catch (err) {
+      if (err instanceof ConflictException) throw err;
+      this.logger.error(`GDrive download failed`, err);
+      throw new BadRequestException(
+        'ไม่สามารถดาวน์โหลดไฟล์จาก Google Drive ได้ ตรวจสอบว่าแชร์เป็น "ทุกคนที่มีลิงก์"',
+      );
+    }
+  }
+
+  /**
+   * Download a file from URL, following redirects (up to 5)
+   */
+  private downloadFile(url: string, maxRedirects = 5): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const protocol = url.startsWith('https') ? https : http;
+      const request = protocol.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+        // Follow redirects
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          if (maxRedirects <= 0) {
+            reject(new Error('Too many redirects'));
+            return;
+          }
+          this.downloadFile(res.headers.location, maxRedirects - 1).then(resolve).catch(reject);
+          return;
+        }
+
+        if (res.statusCode !== 200) {
+          reject(new Error(`Download failed with status ${res.statusCode}`));
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('error', reject);
+      });
+
+      request.on('error', reject);
+      request.setTimeout(300000, () => {
+        request.destroy();
+        reject(new Error('Download timeout'));
+      });
+    });
+  }
+
+  /**
+   * Download video from YouTube URL
+   * Uses yt-dlp or direct Gemini URL for analysis
+   */
+  async downloadFromYouTube(jobId: string, userId: string): Promise<void> {
+    const job = await this.prisma.analysisJob.findUnique({ where: { id: jobId } });
+    if (!job || !job.sourceUrl) throw new BadRequestException('Job or source URL not found');
+
+    const videoId = this.extractYouTubeVideoId(job.sourceUrl);
+    if (!videoId) throw new BadRequestException('ไม่สามารถอ่าน YouTube link ได้ กรุณาตรวจสอบ URL');
+
+    // Store the YouTube video ID / URL for later Gemini analysis
+    // Gemini 2.0 can analyze YouTube URLs directly
+    await this.prisma.analysisJob.update({
+      where: { id: jobId },
+      data: {
+        originalFilename: `YouTube: ${videoId}`,
+        uploadedAt: new Date(),
+      },
+    });
+
+    this.logger.log(`YouTube video registered: ${videoId}`);
+  }
+
+  private extractGDriveFileId(url: string): string | null {
+    // Match patterns:
+    // https://drive.google.com/file/d/FILE_ID/view
+    // https://drive.google.com/open?id=FILE_ID
+    // https://drive.google.com/uc?id=FILE_ID
+    const patterns = [
+      /\/file\/d\/([a-zA-Z0-9_-]+)/,
+      /[?&]id=([a-zA-Z0-9_-]+)/,
+    ];
+    for (const p of patterns) {
+      const m = url.match(p);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  private extractYouTubeVideoId(url: string): string | null {
+    // Match patterns:
+    // https://www.youtube.com/watch?v=VIDEO_ID
+    // https://youtu.be/VIDEO_ID
+    // https://youtube.com/embed/VIDEO_ID
+    const patterns = [
+      /[?&]v=([a-zA-Z0-9_-]{11})/,
+      /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+      /\/embed\/([a-zA-Z0-9_-]{11})/,
+      /\/shorts\/([a-zA-Z0-9_-]{11})/,
+    ];
+    for (const p of patterns) {
+      const m = url.match(p);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  private getExtFromMime(mime: string): string {
+    const map: Record<string, string> = {
+      'video/mp4': '.mp4',
+      'video/webm': '.webm',
+      'video/quicktime': '.mov',
+      'video/x-msvideo': '.avi',
+      'image/jpeg': '.jpg',
+      'image/png': '.png',
+      'image/webp': '.webp',
+    };
+    return map[mime] || '.mp4';
   }
 
   async processJob(jobId: string, userId: string) {
@@ -301,6 +519,15 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     const job = await this.prisma.analysisJob.findUnique({ where: { id: jobId } });
     if (!job) throw new Error('Job not found');
 
+    // Route to specialized methods based on source type
+    if (job.sourceType === 'YOUTUBE') {
+      return this.analyzeYouTubeUrl(job);
+    }
+    if (job.sourceType === 'IMAGES') {
+      return this.analyzeMultipleImages(job);
+    }
+
+    // Default: UPLOAD / GDRIVE (file-based analysis)
     await this.prisma.analysisJob.update({
       where: { id: jobId },
       data: { status: 'ANALYZING' },
@@ -402,8 +629,8 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     });
 
     const analysisPrompt = isImage
-      ? this.buildImageAnalysisPrompt()
-      : this.buildVideoAnalysisPrompt(transcriptText);
+      ? this.buildImageAnalysisPrompt(job.description || undefined)
+      : this.buildVideoAnalysisPrompt(transcriptText, job.description || undefined);
 
     const result = await this.geminiAI.generateWithMedia(analysisPrompt, filePath, mimeType);
 
@@ -455,6 +682,151 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Gemini analysis DONE for job ${jobId}`);
   }
 
+  // ───────── YouTube URL Analysis (Gemini 2.0 supports YouTube URLs) ─────────
+
+  private async analyzeYouTubeUrl(job: any) {
+    const jobId = job.id;
+    const youtubeUrl = job.sourceUrl;
+    const videoId = this.extractYouTubeVideoId(youtubeUrl || '');
+
+    if (!videoId) throw new Error('Invalid YouTube URL');
+
+    await this.prisma.analysisJob.update({
+      where: { id: jobId },
+      data: { status: 'ANALYZING' },
+    });
+
+    const artDir = path.join(this.dataRoot, jobId, 'artifacts');
+    await fs.mkdir(artDir, { recursive: true });
+
+    this.logger.log(`Analyzing YouTube video via Gemini: ${videoId}`);
+
+    // Gemini 2.0 can analyze YouTube URLs directly via text prompt
+    const youtubeAnalysisPrompt = `${this.buildVideoAnalysisPrompt(undefined, job.description || undefined)}
+
+วิดีโอ YouTube ที่ต้องวิเคราะห์: ${youtubeUrl}
+
+กรุณาดูวิดีโอจาก URL ข้างต้นแล้ววิเคราะห์อย่างละเอียด`;
+
+    const result = await this.geminiAI.generateText(youtubeAnalysisPrompt);
+
+    let analysis: any;
+    try {
+      let cleaned = result.text.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      analysis = JSON.parse(cleaned);
+    } catch {
+      analysis = {
+        summary: result.text.substring(0, 1000),
+        strengths: [],
+        improvements: [],
+        advice: result.text,
+      };
+    }
+
+    await fs.writeFile(
+      path.join(artDir, 'report.json'),
+      JSON.stringify(analysis, null, 2),
+      'utf-8',
+    );
+
+    const now = new Date();
+    await this.prisma.analysisJob.update({
+      where: { id: jobId },
+      data: {
+        status: 'DONE',
+        hasReport: true,
+        transcriptSummary: analysis.summary || null,
+        analysisReport: analysis,
+        evaluationResult: analysis.indicators || null,
+        aiAdvice: analysis.advice || null,
+        analysisDoneAt: now,
+        doneAt: now,
+      },
+    });
+
+    this.logger.log(`YouTube analysis DONE for job ${jobId}`);
+  }
+
+  // ───────── Multiple Images Analysis ─────────
+
+  private async analyzeMultipleImages(job: any) {
+    const jobId = job.id;
+
+    await this.prisma.analysisJob.update({
+      where: { id: jobId },
+      data: { status: 'ANALYZING' },
+    });
+
+    const rawDir = path.join(this.dataRoot, jobId, 'raw');
+    const artDir = path.join(this.dataRoot, jobId, 'artifacts');
+    await fs.mkdir(artDir, { recursive: true });
+
+    // find all image files
+    let imageFiles: string[] = [];
+    try {
+      const files = await fs.readdir(rawDir);
+      imageFiles = files
+        .filter((f) => /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(f))
+        .sort();
+    } catch {
+      // dir might not exist
+    }
+
+    if (imageFiles.length === 0) {
+      throw new Error('ไม่พบไฟล์รูปภาพที่อัพโหลด');
+    }
+
+    this.logger.log(`Analyzing ${imageFiles.length} images via Gemini multimodal`);
+
+    const filePaths = imageFiles.map((f) => path.join(rawDir, f));
+    const mimeTypes = imageFiles.map((f) => this.guessMimeType(f));
+
+    const prompt = this.buildMultiImageAnalysisPrompt(imageFiles.length, job.description || undefined);
+    const result = await this.geminiAI.generateWithMultipleImages(prompt, filePaths, mimeTypes);
+
+    let analysis: any;
+    try {
+      let cleaned = result.text.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      analysis = JSON.parse(cleaned);
+    } catch {
+      analysis = {
+        summary: result.text.substring(0, 1000),
+        strengths: [],
+        improvements: [],
+        advice: result.text,
+      };
+    }
+
+    await fs.writeFile(
+      path.join(artDir, 'report.json'),
+      JSON.stringify(analysis, null, 2),
+      'utf-8',
+    );
+
+    const now = new Date();
+    await this.prisma.analysisJob.update({
+      where: { id: jobId },
+      data: {
+        status: 'DONE',
+        hasReport: true,
+        transcriptSummary: analysis.summary || null,
+        analysisReport: analysis,
+        evaluationResult: analysis.indicators || null,
+        aiAdvice: analysis.advice || null,
+        analysisDoneAt: now,
+        doneAt: now,
+      },
+    });
+
+    this.logger.log(`Multi-image analysis DONE for job ${jobId}`);
+  }
+
   private buildTranscriptPrompt(): string {
     return `คุณเป็นผู้เชี่ยวชาญด้านการถอดเสียง (Speech-to-Text) ภาษาไทย
 กรุณาฟังเสียงในวิดีโอนี้แล้วถอดเสียงเป็นข้อความภาษาไทยอย่างละเอียด
@@ -479,13 +851,17 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
 5. ตอบเป็น JSON เท่านั้น ภาษาไทย`;
   }
 
-  private buildVideoAnalysisPrompt(transcript?: string): string {
+  private buildVideoAnalysisPrompt(transcript?: string, description?: string): string {
     const transcriptSection = transcript
       ? `\n\nข้อความถอดเสียงจากวิดีโอ (ใช้ประกอบการวิเคราะห์):\n${transcript.substring(0, 10000)}`
       : '';
 
+    const descSection = description
+      ? `\n\nคำบรรยายชิ้นงานจากครู:\n"${description}"`
+      : '';
+
     return `คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์การสอนและการประเมินครู
-กรุณาดูวิดีโอการสอนนี้แล้ววิเคราะห์อย่างละเอียด${transcriptSection}
+กรุณาดูวิดีโอการสอนนี้แล้ววิเคราะห์อย่างละเอียด${descSection}${transcriptSection}
 
 ให้ผลลัพธ์ในรูป JSON (ไม่มี markdown code fence) ที่มี key ดังนี้:
 {
@@ -510,9 +886,13 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
 สำคัญ: ตอบเป็น JSON เท่านั้น ภาษาไทย`;
   }
 
-  private buildImageAnalysisPrompt(): string {
+  private buildImageAnalysisPrompt(description?: string): string {
+    const descSection = description
+      ? `\n\nคำบรรยายชิ้นงานจากครู:\n"${description}"\n`
+      : '';
+
     return `คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์สื่อการสอนและหลักฐานการปฏิบัติงานครู
-กรุณาดูรูปภาพนี้แล้ววิเคราะห์อย่างละเอียด (อาจเป็นภาพกิจกรรมการสอน, ผลงานนักเรียน, สื่อการสอน, หรือหลักฐานอื่นๆ)
+กรุณาดูรูปภาพนี้แล้ววิเคราะห์อย่างละเอียด (อาจเป็นภาพกิจกรรมการสอน, ผลงานนักเรียน, สื่อการสอน, หรือหลักฐานอื่นๆ)${descSection}
 
 ให้ผลลัพธ์ในรูป JSON (ไม่มี markdown code fence) ที่มี key ดังนี้:
 {
@@ -538,6 +918,8 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async analyzeTranscript(jobId: string) {
+    const job = await this.prisma.analysisJob.findUnique({ where: { id: jobId } });
+
     await this.prisma.analysisJob.update({
       where: { id: jobId },
       data: { status: 'ANALYZING' },
@@ -562,7 +944,7 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Transcript ว่างเปล่า');
     }
 
-    const prompt = `${this.buildVideoAnalysisPrompt()}
+    const prompt = `${this.buildVideoAnalysisPrompt(undefined, job?.description || undefined)}
 
 Transcript:
 ${transcriptText.substring(0, 15000)}`;
@@ -615,6 +997,39 @@ ${transcriptText.substring(0, 15000)}`;
     });
 
     this.logger.log(`Transcript analysis DONE for job ${jobId}`);
+  }
+
+  private buildMultiImageAnalysisPrompt(imageCount: number, description?: string): string {
+    const descSection = description
+      ? `\n\nคำบรรยายชิ้นงานจากครู:\n"${description}"\n`
+      : '';
+
+    return `คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์สื่อการสอนและหลักฐานการปฏิบัติงานครู
+กรุณาดูรูปภาพทั้ง ${imageCount} รูปนี้แล้ววิเคราะห์อย่างละเอียดรวมกัน
+(อาจเป็นภาพกิจกรรมการสอน, ผลงานนักเรียน, สื่อการสอน, สไลด์, แผนการสอน, หรือหลักฐานอื่นๆ)${descSection}
+
+ให้ผลลัพธ์ในรูป JSON (ไม่มี markdown code fence) ที่มี key ดังนี้:
+{
+  "summary": "สรุปภาพรวมสิ่งที่เห็นจากรูปภาพทั้งหมด (3-5 ประโยค)",
+  "imageDescriptions": ["รูปที่ 1: คำอธิบาย", "รูปที่ 2: คำอธิบาย", ...],
+  "strengths": ["จุดแข็ง 1", "จุดแข็ง 2", ...],
+  "improvements": ["ข้อเสนอปรับปรุง 1", "ข้อเสนอปรับปรุง 2", ...],
+  "teachingTechniques": ["เทคนิคที่เกี่ยวข้อง 1", ...],
+  "studentEngagement": "การมีส่วนร่วมของผู้เรียนที่เห็นจากภาพ",
+  "indicators": {
+    "WP_1": "การออกแบบการจัดการเรียนรู้ – ระดับ + เหตุผล",
+    "WP_2": "การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ – ระดับ + เหตุผล",
+    "WP_3": "การวัดและประเมินผล – ระดับ + เหตุผล",
+    "ET_1": "ความเป็นครู – ระดับ + เหตุผล",
+    "ET_2": "การจัดการชั้นเรียน – ระดับ + เหตุผล",
+    "ET_3": "ภาวะผู้นำทางวิชาการ – ระดับ + เหตุผล",
+    "ET_4": "การพัฒนาตนเอง – ระดับ + เหตุผล"
+  },
+  "overallScore": "คะแนนรวม 1-5",
+  "advice": "คำแนะนำสำหรับครูในการพัฒนา (3-5 ประโยค)"
+}
+
+สำคัญ: ตอบเป็น JSON เท่านั้น ภาษาไทย`;
   }
 
   private guessMimeType(filename: string): string {
@@ -714,7 +1129,10 @@ ${transcriptText.substring(0, 15000)}`;
       status: job.status,
       analysisMode: job.analysisMode,
       sourceType: job.sourceType,
+      sourceUrl: job.sourceUrl || null,
+      description: job.description || null,
       originalFilename: job.originalFilename,
+      imageCount: job.imageCount || 0,
       rawBytes: job.rawBytes,
       audioBytes: job.audioBytes,
       framesBytes: job.framesBytes,

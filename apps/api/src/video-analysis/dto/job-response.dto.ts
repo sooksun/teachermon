@@ -8,7 +8,9 @@ export interface JobResponse {
   status: string;
   analysisMode: string;
   sourceType: string;
+  sourceUrl: string | null;
   originalFilename: string | null;
+  imageCount: number;
 
   // byte accounting
   rawBytes: number;

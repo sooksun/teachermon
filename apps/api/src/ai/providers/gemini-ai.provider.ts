@@ -159,6 +159,38 @@ export class GeminiAIProvider {
   }
 
   /**
+   * วิเคราะห์หลายรูปภาพพร้อมกัน (3-5 รูป)
+   */
+  async generateWithMultipleImages(
+    prompt: string,
+    filePaths: string[],
+    mimeTypes: string[],
+  ): Promise<{ text: string; tokensUsed?: number; model: string }> {
+    if (!this.isEnabled) {
+      throw new Error('AI is disabled. GEMINI_API_KEY is not configured.');
+    }
+
+    const parts: any[] = [];
+
+    // add each image as inline base64
+    for (let i = 0; i < filePaths.length; i++) {
+      const data = await fs.readFile(filePaths[i]);
+      const base64 = data.toString('base64');
+      parts.push({
+        inlineData: { mimeType: mimeTypes[i], data: base64 },
+      });
+    }
+
+    // add prompt text
+    parts.push({ text: prompt });
+
+    this.logger.log(`Analyzing ${filePaths.length} images via Gemini multimodal`);
+    const result = await this.model.generateContent(parts);
+    const response = await result.response;
+    return { text: response.text(), model: this.getModelName() };
+  }
+
+  /**
    * ปรับปรุงภาษาให้เป็นทางการ
    */
   async improveLanguage(

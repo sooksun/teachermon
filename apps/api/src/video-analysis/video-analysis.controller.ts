@@ -9,10 +9,11 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  UploadedFiles,
   Res,
   BadRequestException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { VideoAnalysisService } from './video-analysis.service';
 import { CreateJobDto } from './dto/create-job.dto';
@@ -53,6 +54,50 @@ export class VideoAnalysisController {
       throw new BadRequestException('กรุณาเลือกไฟล์ที่ต้องการอัพโหลด');
     }
     return this.service.uploadFile(jobId, req.user.sub, file);
+  }
+
+  // ───────── Multiple Images Upload ─────────
+
+  @Post('jobs/:id/upload-images')
+  @UseInterceptors(
+    FilesInterceptor('files', 5, {
+      limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB max per image
+    }),
+  )
+  async uploadImages(
+    @Param('id') jobId: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Request() req: any,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('กรุณาเลือกรูปภาพอย่างน้อย 1 รูป');
+    }
+    if (files.length > 5) {
+      throw new BadRequestException('อัพโหลดได้สูงสุด 5 รูปภาพ');
+    }
+    // Validate image types
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    for (const f of files) {
+      if (!allowedTypes.includes(f.mimetype)) {
+        throw new BadRequestException(`ไฟล์ ${f.originalname} ไม่ใช่รูปภาพ รองรับ JPG, PNG, WebP, GIF`);
+      }
+    }
+    return this.service.uploadMultipleImages(jobId, req.user.sub, files);
+  }
+
+  // ───────── URL-based sources (Google Drive / YouTube) ─────────
+
+  @Post('jobs/:id/process-url')
+  async processUrlJob(@Param('id') jobId: string, @Request() req: any) {
+    const job = await this.service.getJob(jobId, req.user.sub);
+
+    if (job.sourceType === 'GDRIVE') {
+      await this.service.downloadFromGDrive(jobId, req.user.sub);
+    } else if (job.sourceType === 'YOUTUBE') {
+      await this.service.downloadFromYouTube(jobId, req.user.sub);
+    }
+
+    return this.service.processJob(jobId, req.user.sub);
   }
 
   @Post('jobs/:id/process')

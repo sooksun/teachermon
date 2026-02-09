@@ -6,7 +6,10 @@ interface Job {
   id: string;
   status: string;
   analysisMode: string;
+  sourceType: string;
+  sourceUrl: string | null;
   originalFilename: string | null;
+  imageCount: number;
   rawBytes: number;
   totalBytes: number;
   hasTranscript: boolean;
@@ -16,6 +19,13 @@ interface Job {
   createdAt: string;
   doneAt: string | null;
 }
+
+const SOURCE_LABELS: Record<string, string> = {
+  UPLOAD: 'อัพโหลดไฟล์',
+  GDRIVE: 'Google Drive',
+  YOUTUBE: 'YouTube',
+  IMAGES: 'หลายรูปภาพ',
+};
 
 interface JobStatusCardProps {
   job: Job;
@@ -73,8 +83,11 @@ export function JobStatusCard({ job, onSelect, onDelete }: JobStatusCardProps) {
               {statusInfo.label}
             </span>
             <span className="text-xs text-gray-400">
-              {job.analysisMode === 'FULL' ? 'วิเคราะห์แบบเต็ม' : 'เฉพาะเสียง'}
+              {SOURCE_LABELS[job.sourceType] || job.sourceType}
             </span>
+            {job.sourceType === 'IMAGES' && job.imageCount > 0 && (
+              <span className="text-xs text-purple-500">{job.imageCount} รูป</span>
+            )}
           </div>
         </div>
         <button
@@ -117,7 +130,13 @@ export function JobStatusCard({ job, onSelect, onDelete }: JobStatusCardProps) {
 
       {/* Info */}
       <div className="flex items-center justify-between text-xs text-gray-500">
-        <span>{(job.totalBytes / 1024 / 1024).toFixed(1)} MB</span>
+        <span>
+          {job.totalBytes > 0
+            ? `${(job.totalBytes / 1024 / 1024).toFixed(1)} MB`
+            : job.sourceType === 'YOUTUBE'
+            ? 'YouTube URL'
+            : '--'}
+        </span>
         <span>{new Date(job.createdAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
       </div>
 
