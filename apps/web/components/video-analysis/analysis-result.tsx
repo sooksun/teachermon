@@ -120,7 +120,8 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
     };
   }, []);
 
-  const subtitle = job.originalFilename || (videoId ? `YouTube: ${videoId}`) || 'ชิ้นงาน';
+  const defaultLabel = '\u0e0a\u0e34\u0e49\u0e19\u0e07\u0e32\u0e19'; // ชิ้นงาน
+  const subtitle = job.originalFilename || (videoId ? `YouTube: ${videoId}` : defaultLabel);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
