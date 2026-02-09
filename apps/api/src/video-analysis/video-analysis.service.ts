@@ -1121,6 +1121,36 @@ ${transcriptText.substring(0, 15000)}`;
     }
   }
 
+  /** Resolve raw file path; returns null if not found or path traversal attempt. */
+  async getRawFilePath(jobId: string, filename: string): Promise<string | null> {
+    if (!filename || filename.includes('..') || path.isAbsolute(filename)) {
+      return null;
+    }
+    const rawDir = path.join(this.dataRoot, jobId, 'raw');
+    const resolved = path.resolve(rawDir, filename);
+    const rawDirResolved = path.resolve(rawDir);
+    if (!resolved.startsWith(rawDirResolved) || resolved === rawDirResolved) {
+      return null;
+    }
+    try {
+      await fs.access(resolved);
+      return resolved;
+    } catch {
+      return null;
+    }
+  }
+
+  /** List filenames in job raw directory (e.g. for IMAGES source). */
+  async listRawFiles(jobId: string): Promise<string[]> {
+    const rawDir = path.join(this.dataRoot, jobId, 'raw');
+    try {
+      const files = await fs.readdir(rawDir);
+      return files.filter((f) => /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(f)).sort();
+    } catch {
+      return [];
+    }
+  }
+
   // ───────── helpers ─────────
 
   private formatJob(job: any) {

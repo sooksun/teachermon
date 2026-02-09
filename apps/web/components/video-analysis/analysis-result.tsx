@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiClient } from '@/lib/api-client';
 
 interface AnalysisResultProps {
@@ -8,6 +8,10 @@ interface AnalysisResultProps {
     id: string;
     originalFilename: string | null;
     analysisMode: string;
+    sourceType?: string;
+    sourceUrl?: string | null;
+    hasCover?: boolean;
+    imageCount?: number;
     transcriptSummary: string | null;
     analysisReport: any | null;
     evaluationResult: any | null;
@@ -22,11 +26,35 @@ interface AnalysisResultProps {
 
 type Tab = 'summary' | 'report' | 'indicators' | 'advice' | 'transcript';
 
+function extractYouTubeVideoId(url: string): string | null {
+  if (!url) return null;
+  try {
+    if (url.includes('youtu.be/')) {
+      return url.split('youtu.be/')[1]?.split('?')[0]?.split('/')[0] || null;
+    }
+    const u = new URL(url);
+    if (u.hostname.includes('youtube.com') && u.pathname.includes('/embed/')) {
+      return u.pathname.split('/embed/')[1]?.split('?')[0] || null;
+    }
+    if (u.hostname.includes('youtube.com') && u.searchParams.has('v')) {
+      return u.searchParams.get('v');
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
   const [activeTab, setActiveTab] = useState<Tab>('summary');
   const [transcript, setTranscript] = useState<any>(null);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
+  const [coverObjectUrl, setCoverObjectUrl] = useState<string | null>(null);
+  const [rawImageUrls, setRawImageUrls] = useState<string[]>([]);
+  const objectUrlsRef = useRef<string[]>([]);
   const report = job.analysisReport || {};
+  const sourceType = job.sourceType || 'UPLOAD';
+  const videoId = (job.sourceUrl && extractYouTubeVideoId(job.sourceUrl)) || null;
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'summary', label: 'สรุปภาพรวม' },
@@ -48,6 +76,52 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
     }
   }, [activeTab, job.id, transcript, loadingTranscript]);
 
+  // load thumbnail: cover for UPLOAD/GDRIVE, raw images for IMAGES
+  useEffect(() => {
+    setCoverObjectUrl(null);
+    setRawImageUrls([]);
+    objectUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
+    objectUrlsRef.current = [];
+
+    if ((sourceType === 'UPLOAD' || sourceType === 'GDRIVE') && job.hasCover) {
+      apiClient
+        .get(`/video-analysis/jobs/${job.id}/cover`, { responseType: 'blob' })
+        .then((res) => {
+          const url = URL.createObjectURL(res.data);
+          objectUrlsRef.current.push(url);
+          setCoverObjectUrl(url);
+        })
+        .catch(() => {});
+    } else if (sourceType === 'IMAGES') {
+      apiClient
+        .get<{ files: string[] }>(`/video-analysis/jobs/${job.id}/raw-files`)
+        .then((res) => {
+          const files = res.data?.files?.slice(0, 6) || [];
+          return Promise.all(
+            files.map((filename) =>
+              apiClient.get(`/video-analysis/jobs/${job.id}/raw/${encodeURIComponent(filename)}`, { responseType: 'blob' })
+            )
+          );
+        })
+        .then((responses) => {
+          const list = responses.map((r) => URL.createObjectURL((r as any).data));
+          list.forEach((u) => objectUrlsRef.current.push(u));
+          setRawImageUrls(list);
+        })
+        .catch(() => {});
+    }
+  }, [job.id, sourceType, job.hasCover]);
+
+  // revoke all object URLs on unmount
+  useEffect(() => {
+    return () => {
+      objectUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
+      objectUrlsRef.current = [];
+    };
+  }, []);
+
+  const subtitle = job.originalFilename || (videoId ? `YouTube: ${videoId}`) || 'ชิ้นงาน';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
@@ -55,7 +129,7 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
         <div className="flex items-center justify-between p-5 border-b">
           <div>
             <h2 className="text-lg font-bold text-gray-900">ผลการวิเคราะห์ AI</h2>
-            <p className="text-sm text-gray-500 mt-0.5">{job.originalFilename || 'ชิ้นงาน'}</p>
+            <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -63,6 +137,51 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
             </svg>
           </button>
         </div>
+
+        {/* Thumbnail: Video (YouTube embed) or Cover / Image thumbnails */}
+        {(videoId || coverObjectUrl || rawImageUrls.length > 0) && (
+          <div className="px-5 pb-4 border-b">
+            {videoId && (
+              <div className="rounded-lg overflow-hidden bg-black">
+                <iframe
+                  title="YouTube วิดีโอ"
+                  src={`https://www.youtube.com/embed/${videoId}`}
+                  className="w-full aspect-video"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+                <p className="text-xs text-gray-500 py-1.5 px-2">YouTube: {videoId}</p>
+              </div>
+            )}
+            {!videoId && coverObjectUrl && (
+              <div className="rounded-lg overflow-hidden bg-gray-100">
+                <img
+                  src={coverObjectUrl}
+                  alt="ภาพตัวอย่างชิ้นงาน"
+                  className="w-full max-h-56 object-contain"
+                />
+                <p className="text-xs text-gray-500 py-1.5 px-2">{subtitle}</p>
+              </div>
+            )}
+            {!videoId && !coverObjectUrl && rawImageUrls.length > 0 && (
+              <div className="rounded-lg overflow-hidden">
+                <div className="flex flex-wrap gap-2">
+                  {rawImageUrls.map((src, i) => (
+                    <img
+                      key={i}
+                      src={src}
+                      alt={`รูปที่ ${i + 1}`}
+                      className="h-24 w-auto max-w-[120px] object-cover rounded border border-gray-200"
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 py-1.5 px-2">
+                  รูปภาพที่วิเคราะห์ ({rawImageUrls.length} รูป)
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex border-b px-5">

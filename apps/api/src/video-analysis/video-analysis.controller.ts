@@ -153,6 +153,28 @@ export class VideoAnalysisController {
     return res.sendFile(coverPath);
   }
 
+  @Get('jobs/:id/raw-files')
+  async listRawFiles(@Param('id') jobId: string, @Request() req: any) {
+    await this.service.getJob(jobId, req.user.sub);
+    const files = await this.service.listRawFiles(jobId);
+    return { files };
+  }
+
+  @Get('jobs/:id/raw/:filename')
+  async getRawFile(
+    @Param('id') jobId: string,
+    @Param('filename') filename: string,
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    await this.service.getJob(jobId, req.user.sub);
+    const rawPath = await this.service.getRawFilePath(jobId, filename);
+    if (!rawPath) {
+      throw new BadRequestException('Raw file not found');
+    }
+    return res.sendFile(rawPath);
+  }
+
   @Get('jobs/:id/frame/:filename')
   async getFrame(
     @Param('id') jobId: string,
