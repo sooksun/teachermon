@@ -103,21 +103,46 @@ export default function AIAnalyzePage() {
           </div>
         </div>
 
-        {/* Completed jobs — แสดงต่อจาก header เลย */}
-        {completedJobs.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {completedJobs.map((job: any) => (
-              <JobStatusCard
-                key={job.id}
-                job={job}
-                onSelect={handleSelectJob}
-                onDelete={handleDelete}
-              />
-            ))}
+        {/* คอลัมน์ซ้าย: พื้นที่ใช้งาน + วิเคราะห์เสร็จแล้ว | คอลัมน์ขวา: อัพโหลด */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          {/* ซ้าย: พื้นที่ใช้งาน แล้วตามด้วย วิเคราะห์เสร็จแล้ว */}
+          <div className="lg:col-span-1 flex flex-col gap-6">
+            <QuotaIndicator
+              limitBytes={quota?.limitBytes || 1073741824}
+              usageBytes={quota?.usageBytes || 0}
+              remainingBytes={quota?.remainingBytes || 1073741824}
+            />
+            {completedJobs.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  วิเคราะห์เสร็จแล้ว ({completedJobs.length})
+                </h2>
+                <div className="space-y-4">
+                  {completedJobs.map((job: any) => (
+                    <JobStatusCard
+                      key={job.id}
+                      job={job}
+                      onSelect={handleSelectJob}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        )}
+          {/* ขวา: อัพโหลดชิ้นงาน */}
+          <div className="lg:col-span-2">
+            <VideoUploadForm
+              onJobCreated={handleJobCreated}
+              remainingBytes={quota?.remainingBytes || 1073741824}
+            />
+          </div>
+        </div>
 
-        {/* Active jobs (กำลังประมวลผล) */}
+        {/* กำลังประมวลผล */}
         {activeJobs.length > 0 && (
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
@@ -139,7 +164,7 @@ export default function AIAnalyzePage() {
           </div>
         )}
 
-        {/* Failed jobs */}
+        {/* ล้มเหลว */}
         {failedJobs.length > 0 && (
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
@@ -160,23 +185,6 @@ export default function AIAnalyzePage() {
             </div>
           </div>
         )}
-
-        {/* Upload section — Quota + Upload form */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <QuotaIndicator
-              limitBytes={quota?.limitBytes || 1073741824}
-              usageBytes={quota?.usageBytes || 0}
-              remainingBytes={quota?.remainingBytes || 1073741824}
-            />
-          </div>
-          <div className="lg:col-span-2">
-            <VideoUploadForm
-              onJobCreated={handleJobCreated}
-              remainingBytes={quota?.remainingBytes || 1073741824}
-            />
-          </div>
-        </div>
 
         {/* Empty state */}
         {!jobsLoading && (!jobs || jobs.length === 0) && (
