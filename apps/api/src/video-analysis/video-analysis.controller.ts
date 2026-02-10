@@ -79,7 +79,8 @@ export class VideoAnalysisController {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     for (const f of files) {
       if (!allowedTypes.includes(f.mimetype)) {
-        throw new BadRequestException(`ไฟล์ ${f.originalname} ไม่ใช่รูปภาพ รองรับ JPG, PNG, WebP, GIF`);
+        const name = Buffer.from(f.originalname || '', 'latin1').toString('utf8');
+        throw new BadRequestException(`ไฟล์ ${name} ไม่ใช่รูปภาพ รองรับ JPG, PNG, WebP, GIF`);
       }
     }
     return this.service.uploadMultipleImages(jobId, req.user.sub, files);

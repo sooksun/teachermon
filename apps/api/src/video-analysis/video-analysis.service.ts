@@ -21,6 +21,16 @@ import * as http from 'http';
 
 const DEFAULT_QUOTA = 2_147_483_648; // 2 GB ต่อครู
 
+/** Decode Multer originalname (Latin-1) → UTF-8 เพื่อให้ภาษาไทยแสดงถูกต้อง */
+function decodeFilename(name: string | undefined): string {
+  if (!name) return '';
+  try {
+    return Buffer.from(name, 'latin1').toString('utf8');
+  } catch {
+    return name;
+  }
+}
+
 @Injectable()
 export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(VideoAnalysisService.name);
@@ -164,7 +174,8 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     const rawDir = path.join(this.dataRoot, jobId, 'raw');
     await fs.mkdir(rawDir, { recursive: true });
 
-    const ext = path.extname(file.originalname || '.mp4') || '.mp4';
+    const decodedName = decodeFilename(file.originalname);
+    const ext = path.extname(decodedName || '.mp4') || '.mp4';
     const destFile = path.join(rawDir, `video${ext}`);
     await fs.writeFile(destFile, file.buffer);
 
@@ -177,7 +188,7 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
         rawBytes,
         totalBytes: rawBytes,
         mimeType: file.mimetype,
-        originalFilename: file.originalname,
+        originalFilename: decodedName,
         uploadedAt: new Date(),
       },
     });
@@ -213,7 +224,8 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     await fs.mkdir(rawDir, { recursive: true });
 
     for (let i = 0; i < files.length; i++) {
-      const ext = path.extname(files[i].originalname || '.jpg') || '.jpg';
+      const decodedName = decodeFilename(files[i].originalname);
+      const ext = path.extname(decodedName || '.jpg') || '.jpg';
       const destFile = path.join(rawDir, `image_${i + 1}${ext}`);
       await fs.writeFile(destFile, files[i].buffer);
     }
@@ -225,7 +237,7 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
         rawBytes: totalSize,
         totalBytes: totalSize,
         mimeType: files[0].mimetype,
-        originalFilename: files.map((f) => f.originalname).join(', '),
+        originalFilename: files.map((f) => decodeFilename(f.originalname)).join(', '),
         imageCount: files.length,
         uploadedAt: new Date(),
       },
