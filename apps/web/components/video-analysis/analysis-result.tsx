@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { apiClient } from '@/lib/api-client';
-import { getIndicatorDisplayName } from '@teachermon/shared';
+import { INDICATOR_CODE_TO_NAME } from '@teachermon/shared';
 
 interface AnalysisResultProps {
   job: {
@@ -456,7 +456,7 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
                       <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs font-bold">
                         {code}
                       </span>
-                      <span className="text-sm font-medium text-gray-700">{getIndicatorDisplayName(code)}</span>
+                      <span className="text-sm font-medium text-gray-700">{INDICATOR_CODE_TO_NAME[code] ?? code}</span>
                     </div>
                     <p className="text-sm text-gray-600">{String(desc)}</p>
                   </div>
