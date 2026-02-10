@@ -1,15 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { MainLayout } from '@/components/layout/main-layout';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { PortfolioItemCard } from '@/components/portfolio/portfolio-item-card';
+import { AiJobCard } from '@/components/portfolio/ai-job-card';
 import { UploadModal } from '@/components/portfolio/upload-modal';
 import { VideoLinkModal } from '@/components/portfolio/video-link-modal';
 import { DetailModal } from '@/components/portfolio/detail-modal';
+import { AnalysisResult } from '@/components/video-analysis/analysis-result';
 
 const EVIDENCE_TYPE_OPTIONS = [
   { value: '', label: 'ทุกประเภท' },
@@ -26,6 +28,7 @@ const ITEM_TYPE_OPTIONS = [
   { value: '', label: 'ทั้งหมด' },
   { value: 'FILE', label: 'ไฟล์' },
   { value: 'VIDEO_LINK', label: 'วิดีโอลิงก์' },
+  { value: 'AI_ANALYSIS', label: 'AI วิเคราะห์' },
 ];
 
 export default function PortfolioPage() {
@@ -42,9 +45,13 @@ export default function PortfolioPage() {
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  // AI Analysis Result modal
+  const [aiResultOpen, setAiResultOpen] = useState(false);
+  const [selectedAiJob, setSelectedAiJob] = useState<any>(null);
 
   const teacherId = user?.teacherId;
 
+  // ─── Portfolio items ───
   const { data: portfolioItems, isLoading, refetch } = useQuery({
     queryKey: ['portfolio-items', teacherId],
     queryFn: async () => {
@@ -53,6 +60,15 @@ export default function PortfolioPage() {
       return response.data;
     },
     enabled: !!teacherId,
+  });
+
+  // ─── AI Analysis jobs (DONE only) ───
+  const { data: aiJobs, isLoading: aiJobsLoading, refetch: refetchAiJobs } = useQuery({
+    queryKey: ['analysis-jobs'],
+    queryFn: async () => {
+      const res = await apiClient.get('/video-analysis/jobs');
+      return (res.data || []).filter((j: any) => j.status === 'DONE');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -68,6 +84,21 @@ export default function PortfolioPage() {
     },
   });
 
+  // ─── Delete AI analysis job ───
+  const deleteAiJobMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      await apiClient.delete(`/video-analysis/jobs/${jobId}`);
+    },
+    onSuccess: () => {
+      refetchAiJobs();
+      queryClient.invalidateQueries({ queryKey: ['analysis-jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['analysis-quota'] });
+    },
+    onError: (err: any) => {
+      alert(err?.response?.data?.message || 'เกิดข้อผิดพลาดในการลบ');
+    },
+  });
+
   const handleView = (item: any) => {
     setSelectedItem(item);
     setDetailModalOpen(true);
@@ -77,8 +108,18 @@ export default function PortfolioPage() {
     deleteMutation.mutate(id);
   };
 
-  // Filter items
-  const filteredItems = portfolioItems?.filter((item: any) => {
+  const handleViewAiJob = useCallback((job: any) => {
+    setSelectedAiJob(job);
+    setAiResultOpen(true);
+  }, []);
+
+  const handleDeleteAiJob = useCallback((jobId: string) => {
+    deleteAiJobMutation.mutate(jobId);
+  }, [deleteAiJobMutation]);
+
+  // Filter portfolio items
+  const filteredPortfolioItems = portfolioItems?.filter((item: any) => {
+    if (filters.itemType === 'AI_ANALYSIS') return false; // AI filter hides portfolio items
     if (filters.evidenceType && item.evidenceType !== filters.evidenceType) {
       return false;
     }
@@ -98,14 +139,47 @@ export default function PortfolioPage() {
     return true;
   }) || [];
 
-  // Calculate stats
+  // Filter AI jobs
+  const filteredAiJobs = (aiJobs || []).filter((job: any) => {
+    // If a specific non-AI itemType is selected, hide AI jobs
+    if (filters.itemType && filters.itemType !== 'AI_ANALYSIS') return false;
+    // Evidence type filter doesn't apply to AI jobs
+    if (filters.evidenceType) return false;
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      return (
+        job.originalFilename?.toLowerCase().includes(searchLower) ||
+        job.transcriptSummary?.toLowerCase().includes(searchLower)
+      );
+    }
+    return true;
+  });
+
+  // Combine and sort all items by date (newest first)
+  const allItems: { type: 'portfolio' | 'ai_job'; data: any; date: string }[] = [
+    ...filteredPortfolioItems.map((item: any) => ({
+      type: 'portfolio' as const,
+      data: item,
+      date: item.uploadedAt || item.createdAt,
+    })),
+    ...filteredAiJobs.map((job: any) => ({
+      type: 'ai_job' as const,
+      data: job,
+      date: job.doneAt || job.createdAt,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Calculate stats (including AI jobs)
+  const aiJobCount = aiJobs?.length || 0;
   const stats = {
-    total: portfolioItems?.length || 0,
+    total: (portfolioItems?.length || 0) + aiJobCount,
     files: portfolioItems?.filter((i: any) => i.itemType === 'FILE').length || 0,
     videos: portfolioItems?.filter((i: any) => i.itemType === 'VIDEO_LINK').length || 0,
-    totalSize: portfolioItems
+    aiAnalysis: aiJobCount,
+    totalSize: (portfolioItems
       ?.filter((i: any) => i.fileSize)
-      .reduce((sum: number, i: any) => sum + i.fileSize, 0) || 0,
+      .reduce((sum: number, i: any) => sum + i.fileSize, 0) || 0) +
+      (aiJobs?.reduce((sum: number, j: any) => sum + (j.totalBytes || 0), 0) || 0),
   };
 
   return (
@@ -195,33 +269,19 @@ export default function PortfolioPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="p-5">
               <div className="flex items-center">
                 <div className="flex-shrink-0 bg-blue-500 rounded-md p-3">
-                  <svg
-                    className="h-6 w-6 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                    />
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                   </svg>
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      ทั้งหมด
-                    </dt>
-                    <dd className="text-2xl font-semibold text-gray-900">
-                      {stats.total}
-                    </dd>
+                    <dt className="text-sm font-medium text-gray-500 truncate">ทั้งหมด</dt>
+                    <dd className="text-2xl font-semibold text-gray-900">{stats.total}</dd>
                   </dl>
                 </div>
               </div>
@@ -232,26 +292,14 @@ export default function PortfolioPage() {
             <div className="p-5">
               <div className="flex items-center">
                 <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
-                  <svg
-                    className="h-6 w-6 text-white"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
-                      clipRule="evenodd"
-                    />
+                  <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
                   </svg>
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      ไฟล์
-                    </dt>
-                    <dd className="text-2xl font-semibold text-gray-900">
-                      {stats.files}
-                    </dd>
+                    <dt className="text-sm font-medium text-gray-500 truncate">ไฟล์</dt>
+                    <dd className="text-2xl font-semibold text-gray-900">{stats.files}</dd>
                   </dl>
                 </div>
               </div>
@@ -262,22 +310,32 @@ export default function PortfolioPage() {
             <div className="p-5">
               <div className="flex items-center">
                 <div className="flex-shrink-0 bg-red-500 rounded-md p-3">
-                  <svg
-                    className="h-6 w-6 text-white"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
+                  <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
                   </svg>
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      วิดีโอ
-                    </dt>
-                    <dd className="text-2xl font-semibold text-gray-900">
-                      {stats.videos}
-                    </dd>
+                    <dt className="text-sm font-medium text-gray-500 truncate">วิดีโอ</dt>
+                    <dd className="text-2xl font-semibold text-gray-900">{stats.videos}</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 bg-amber-500 rounded-md p-3">
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">AI วิเคราะห์</dt>
+                    <dd className="text-2xl font-semibold text-gray-900">{stats.aiAnalysis}</dd>
                   </dl>
                 </div>
               </div>
@@ -288,28 +346,14 @@ export default function PortfolioPage() {
             <div className="p-5">
               <div className="flex items-center">
                 <div className="flex-shrink-0 bg-purple-500 rounded-md p-3">
-                  <svg
-                    className="h-6 w-6 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
-                    />
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
                   </svg>
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      ขนาดรวม
-                    </dt>
-                    <dd className="text-2xl font-semibold text-gray-900">
-                      {(stats.totalSize / 1024 / 1024).toFixed(1)} MB
-                    </dd>
+                    <dt className="text-sm font-medium text-gray-500 truncate">ขนาดรวม</dt>
+                    <dd className="text-2xl font-semibold text-gray-900">{(stats.totalSize / 1024 / 1024).toFixed(1)} MB</dd>
                   </dl>
                 </div>
               </div>
@@ -463,65 +507,54 @@ export default function PortfolioPage() {
         </div>
 
         {/* Content */}
-        {isLoading ? (
+        {(isLoading || aiJobsLoading) ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             <p className="mt-2 text-sm text-gray-600">กำลังโหลดข้อมูล...</p>
           </div>
-        ) : filteredItems.length > 0 ? (
+        ) : allItems.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredItems.map((item: any) => (
-              <PortfolioItemCard
-                key={item.id}
-                item={item}
-                onView={handleView}
-                onDelete={handleDelete}
-              />
-            ))}
+            {allItems.map((entry) =>
+              entry.type === 'portfolio' ? (
+                <PortfolioItemCard
+                  key={`p-${entry.data.id}`}
+                  item={entry.data}
+                  onView={handleView}
+                  onDelete={handleDelete}
+                />
+              ) : (
+                <AiJobCard
+                  key={`ai-${entry.data.id}`}
+                  job={entry.data}
+                  onView={handleViewAiJob}
+                  onDelete={handleDeleteAiJob}
+                />
+              )
+            )}
           </div>
         ) : (
           <div className="text-center py-12 bg-white rounded-lg shadow">
-            <svg
-              className="mx-auto h-12 w-12 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-              />
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
             <h3 className="mt-2 text-sm font-medium text-gray-900">
-              {portfolioItems?.length === 0
+              {(portfolioItems?.length === 0 && aiJobCount === 0)
                 ? 'ยังไม่มี Portfolio'
                 : 'ไม่พบรายการที่ค้นหา'}
             </h3>
             <p className="mt-1 text-sm text-gray-500">
-              {portfolioItems?.length === 0
-                ? 'เริ่มต้นอัพโหลดไฟล์หรือเพิ่มวิดีโอลิงก์'
+              {(portfolioItems?.length === 0 && aiJobCount === 0)
+                ? 'เริ่มต้นอัพโหลดไฟล์ เพิ่มวิดีโอลิงก์ หรือใช้ AI วิเคราะห์ชิ้นงาน'
                 : 'ลองเปลี่ยนเงื่อนไขการค้นหา'}
             </p>
-            {portfolioItems?.length === 0 && (
-              <div className="mt-6 flex gap-3 justify-center">
+            {(portfolioItems?.length === 0 && aiJobCount === 0) && (
+              <div className="mt-6 flex gap-3 justify-center flex-wrap">
                 <button
                   onClick={() => setUploadModalOpen(true)}
                   className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
                 >
-                  <svg
-                    className="-ml-1 mr-2 h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                    />
+                  <svg className="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
                   อัพโหลดไฟล์
                 </button>
@@ -529,15 +562,20 @@ export default function PortfolioPage() {
                   onClick={() => setVideoModalOpen(true)}
                   className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
                 >
-                  <svg
-                    className="-ml-1 mr-2 h-5 w-5"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
+                  <svg className="-ml-1 mr-2 h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
                   </svg>
                   เพิ่มวิดีโอ
                 </button>
+                <Link
+                  href="/portfolio/ai-analyze"
+                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700"
+                >
+                  <svg className="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  AI วิเคราะห์ชิ้นงาน
+                </Link>
               </div>
             )}
           </div>
@@ -560,6 +598,17 @@ export default function PortfolioPage() {
         onClose={() => setDetailModalOpen(false)}
         item={selectedItem}
       />
+
+      {/* AI Analysis Result Modal */}
+      {aiResultOpen && selectedAiJob && (
+        <AnalysisResult
+          job={selectedAiJob}
+          onClose={() => {
+            setAiResultOpen(false);
+            setSelectedAiJob(null);
+          }}
+        />
+      )}
     </MainLayout>
   );
 }
