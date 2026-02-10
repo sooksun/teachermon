@@ -76,6 +76,10 @@ COPY packages/database/package.json ./packages/database/
 RUN corepack enable && corepack prepare pnpm@9 --activate \
     && pnpm install --frozen-lockfile --prod
 
+# Next.js image optimizer ต้องเขียน cache → สร้างโฟลเดอร์และให้สิทธิ์ node
+RUN mkdir -p /app/apps/web/.next/cache/images \
+    && chown -R node:node /app/apps/web/.next
+
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:3000/ || exit 1
 
