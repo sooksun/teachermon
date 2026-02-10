@@ -947,7 +947,7 @@ model AnalysisJob {
   description         String?            @map("description") @db.Text
 
   // Original file info
-  originalFilename    String?            @map("original_filename")
+  originalFilename    String?            @map("original_filename") @db.Text
   mimeType            String?            @map("mime_type")
 
   // Image count (for IMAGES source type)
