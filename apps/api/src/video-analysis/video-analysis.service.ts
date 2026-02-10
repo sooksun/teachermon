@@ -315,9 +315,10 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (err) {
       if (err instanceof ConflictException) throw err;
-      this.logger.error(`GDrive download failed`, err);
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.error(`GDrive download failed: ${detail}`, err instanceof Error ? err.stack : undefined);
       throw new BadRequestException(
-        'ไม่สามารถดาวน์โหลดไฟล์จาก Google Drive ได้ ตรวจสอบว่าแชร์เป็น "ทุกคนที่มีลิงก์"',
+        `ไม่สามารถดาวน์โหลดไฟล์จาก Google Drive ได้ (${detail}) - ตรวจสอบว่าเป็นไฟล์วิดีโอและแชร์เป็น "ทุกคนที่มีลิงก์"`,
       );
     }
   }
@@ -394,13 +395,48 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
   }
 
   private extractGDriveConfirmUrl(html: string, fileId: string): string | null {
-    // 1) Direct href form: /uc?export=download&confirm=...&id=...
-    const hrefMatch = html.match(/href="(\/uc\?export=download[^"]+)"/i);
-    if (hrefMatch?.[1]) {
-      return `https://drive.google.com${hrefMatch[1].replace(/&amp;/g, '&')}`;
+    const decodeHtml = (value: string) =>
+      value
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, '\'')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+
+    // 1) href/action with confirm token (relative or absolute)
+    const directMatch = html.match(
+      /(href|action)=["']((?:\/uc\?[^"']*confirm=[^"']+)|(?:https:\/\/drive(?:\.usercontent)?\.google\.com\/[^"']*confirm=[^"']+))["']/i,
+    );
+    if (directMatch?.[2]) {
+      const raw = decodeHtml(directMatch[2]);
+      return raw.startsWith('http') ? raw : `https://drive.google.com${raw}`;
     }
 
-    // 2) confirm token in page script/content
+    // 2) Virus-scan warning pages often use a form with hidden inputs.
+    // Build confirm URL from action + all hidden fields (id, export, confirm, uuid, etc.).
+    const formMatch = html.match(/<form[^>]+action=["']([^"']+)["'][^>]*>([\s\S]*?)<\/form>/i);
+    if (formMatch?.[1]) {
+      const actionRaw = decodeHtml(formMatch[1]);
+      const baseUrl = actionRaw.startsWith('http')
+        ? new URL(actionRaw)
+        : new URL(actionRaw, 'https://drive.google.com');
+
+      const params = new URLSearchParams(baseUrl.search);
+      const formBody = formMatch[2] || '';
+      const inputRegex = /<input[^>]+name=["']([^"']+)["'][^>]*value=["']([^"']*)["'][^>]*>/gi;
+      let inputMatch: RegExpExecArray | null = inputRegex.exec(formBody);
+      while (inputMatch) {
+        params.set(decodeHtml(inputMatch[1]), decodeHtml(inputMatch[2]));
+        inputMatch = inputRegex.exec(formBody);
+      }
+
+      if (!params.has('id')) params.set('id', fileId);
+      if (!params.has('export')) params.set('export', 'download');
+      baseUrl.search = params.toString();
+      return baseUrl.toString();
+    }
+
+    // 3) confirm token in page script/content
     const confirmMatch = html.match(/confirm=([0-9A-Za-z_-]+)/);
     if (confirmMatch?.[1]) {
       return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=${confirmMatch[1]}`;
