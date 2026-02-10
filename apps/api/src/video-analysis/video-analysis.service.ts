@@ -249,13 +249,47 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Downloading from Google Drive: ${fileId}`);
 
     try {
-      const buffer = await this.downloadFile(downloadUrl);
+      let downloaded = await this.downloadFile(downloadUrl);
+
+      // Some Google Drive files return an interstitial HTML page first.
+      // Try to extract confirm URL and re-download with cookies.
+      if (this.isLikelyHtml(downloaded.buffer, downloaded.contentType)) {
+        const html = downloaded.buffer.toString('utf-8');
+        const confirmUrl = this.extractGDriveConfirmUrl(html, fileId);
+        if (confirmUrl) {
+          this.logger.log(`Google Drive confirm page detected, retrying with confirm token`);
+          downloaded = await this.downloadFile(confirmUrl, 5, downloaded.cookies);
+        }
+      }
+
+      // Final validation: must not be HTML / text page.
+      if (this.isLikelyHtml(downloaded.buffer, downloaded.contentType)) {
+        throw new Error(
+          `Downloaded content is not a media file (content-type=${downloaded.contentType || 'unknown'})`,
+        );
+      }
+
+      const buffer = downloaded.buffer;
+      if (buffer.byteLength < 10 * 1024) {
+        throw new Error(`Downloaded file is too small (${buffer.byteLength} bytes)`);
+      }
+
+      const detectedMime = this.detectVideoMimeType(
+        buffer,
+        downloaded.contentType,
+        downloaded.finalUrl,
+      );
+      if (!detectedMime || !detectedMime.startsWith('video/')) {
+        throw new Error(
+          `Downloaded file is not a supported video (detected=${detectedMime || 'unknown'})`,
+        );
+      }
 
       const rawDir = path.join(this.dataRoot, jobId, 'raw');
       await fs.mkdir(rawDir, { recursive: true });
 
-      // default to mp4 for videos
-      const destFile = path.join(rawDir, `video.mp4`);
+      const ext = this.getExtFromMime(detectedMime);
+      const destFile = path.join(rawDir, `video${ext}`);
       await fs.writeFile(destFile, buffer);
 
       const rawBytes = buffer.byteLength;
@@ -270,13 +304,15 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
         data: {
           rawBytes,
           totalBytes: rawBytes,
-          mimeType: 'video/mp4',
+          mimeType: detectedMime,
           uploadedAt: new Date(),
         },
       });
       await this.addQuotaUsage(userId, rawBytes);
 
-      this.logger.log(`GDrive file downloaded: ${rawBytes} bytes`);
+      this.logger.log(
+        `GDrive file downloaded: ${rawBytes} bytes (${detectedMime}, ${path.basename(destFile)})`,
+      );
     } catch (err) {
       if (err instanceof ConflictException) throw err;
       this.logger.error(`GDrive download failed`, err);
@@ -289,30 +325,56 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
   /**
    * Download a file from URL, following redirects (up to 5)
    */
-  private downloadFile(url: string, maxRedirects = 5): Promise<Buffer> {
+  private downloadFile(
+    url: string,
+    maxRedirects = 5,
+    cookies: string[] = [],
+  ): Promise<{ buffer: Buffer; contentType: string; finalUrl: string; cookies: string[] }> {
     return new Promise((resolve, reject) => {
       const protocol = url.startsWith('https') ? https : http;
-      const request = protocol.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+      const cookieHeader = cookies.length > 0 ? cookies.join('; ') : undefined;
+      const request = protocol.get(
+        url,
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0',
+            ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+          },
+        },
+        (res) => {
+          const setCookieRaw = res.headers['set-cookie'] || [];
+          const setCookie = Array.isArray(setCookieRaw)
+            ? setCookieRaw.map((c) => c.split(';')[0]).filter(Boolean)
+            : [];
+          const mergedCookies = Array.from(new Set([...cookies, ...setCookie]));
+
         // Follow redirects
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          if (maxRedirects <= 0) {
-            reject(new Error('Too many redirects'));
+          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            if (maxRedirects <= 0) {
+              reject(new Error('Too many redirects'));
+              return;
+            }
+            const nextUrl = new URL(res.headers.location, url).toString();
+            this.downloadFile(nextUrl, maxRedirects - 1, mergedCookies).then(resolve).catch(reject);
             return;
           }
-          this.downloadFile(res.headers.location, maxRedirects - 1).then(resolve).catch(reject);
-          return;
-        }
 
-        if (res.statusCode !== 200) {
-          reject(new Error(`Download failed with status ${res.statusCode}`));
-          return;
-        }
+          if (res.statusCode !== 200) {
+            reject(new Error(`Download failed with status ${res.statusCode}`));
+            return;
+          }
 
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk: Buffer) => chunks.push(chunk));
-        res.on('end', () => resolve(Buffer.concat(chunks)));
-        res.on('error', reject);
-      });
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => resolve({
+            buffer: Buffer.concat(chunks),
+            contentType: String(res.headers['content-type'] || ''),
+            finalUrl: url,
+            cookies: mergedCookies,
+          }));
+          res.on('error', reject);
+        },
+      );
 
       request.on('error', reject);
       request.setTimeout(300000, () => {
@@ -320,6 +382,67 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
         reject(new Error('Download timeout'));
       });
     });
+  }
+
+  private isLikelyHtml(buffer: Buffer, contentType: string): boolean {
+    const ct = (contentType || '').toLowerCase();
+    if (ct.includes('text/html') || ct.includes('text/plain') || ct.includes('application/xhtml+xml')) {
+      return true;
+    }
+    const prefix = buffer.subarray(0, 512).toString('utf-8').trim().toLowerCase();
+    return prefix.startsWith('<!doctype html') || prefix.startsWith('<html') || prefix.includes('<head>');
+  }
+
+  private extractGDriveConfirmUrl(html: string, fileId: string): string | null {
+    // 1) Direct href form: /uc?export=download&confirm=...&id=...
+    const hrefMatch = html.match(/href="(\/uc\?export=download[^"]+)"/i);
+    if (hrefMatch?.[1]) {
+      return `https://drive.google.com${hrefMatch[1].replace(/&amp;/g, '&')}`;
+    }
+
+    // 2) confirm token in page script/content
+    const confirmMatch = html.match(/confirm=([0-9A-Za-z_-]+)/);
+    if (confirmMatch?.[1]) {
+      return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=${confirmMatch[1]}`;
+    }
+
+    return null;
+  }
+
+  private detectVideoMimeType(buffer: Buffer, contentType: string, finalUrl: string): string | null {
+    const normalizedCt = (contentType || '').split(';')[0].trim().toLowerCase();
+    if (normalizedCt.startsWith('video/')) return normalizedCt;
+
+    // MP4 signature (ftyp box at offset 4)
+    if (buffer.length > 12 && buffer.toString('ascii', 4, 8) === 'ftyp') {
+      return 'video/mp4';
+    }
+
+    // EBML signature (WebM/Matroska family)
+    if (
+      buffer.length > 4
+      && buffer[0] === 0x1a
+      && buffer[1] === 0x45
+      && buffer[2] === 0xdf
+      && buffer[3] === 0xa3
+    ) {
+      return 'video/webm';
+    }
+
+    const pathname = (() => {
+      try {
+        return new URL(finalUrl).pathname.toLowerCase();
+      } catch {
+        return '';
+      }
+    })();
+    if (pathname.endsWith('.mp4')) return 'video/mp4';
+    if (pathname.endsWith('.webm')) return 'video/webm';
+    if (pathname.endsWith('.mov')) return 'video/quicktime';
+    if (pathname.endsWith('.avi')) return 'video/x-msvideo';
+    if (pathname.endsWith('.mkv')) return 'video/x-matroska';
+
+    return null;
   }
 
   /**
@@ -386,6 +509,7 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
       'video/webm': '.webm',
       'video/quicktime': '.mov',
       'video/x-msvideo': '.avi',
+      'video/x-matroska': '.mkv',
       'image/jpeg': '.jpg',
       'image/png': '.png',
       'image/webp': '.webp',
