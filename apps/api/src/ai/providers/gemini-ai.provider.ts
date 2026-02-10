@@ -6,6 +6,9 @@ import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const DEPRECATED_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-lite', 'gemini-2.0-flash-001'];
+
 /**
  * Gemini AI Provider
  * ใช้ Google Gemini API สำหรับ AI Features
@@ -17,12 +20,19 @@ export class GeminiAIProvider {
   private model: GenerativeModel;
   private isEnabled: boolean;
   private apiKey: string;
+  private effectiveModelName: string;
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     this.apiKey = apiKey || '';
-    const modelName = this.configService.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
+    const configured = this.configService.get<string>('GEMINI_MODEL', DEFAULT_GEMINI_MODEL)?.trim() || DEFAULT_GEMINI_MODEL;
+    const modelName = DEPRECATED_MODELS.includes(configured) ? DEFAULT_GEMINI_MODEL : configured;
+    this.effectiveModelName = modelName;
     this.isEnabled = this.configService.get<boolean>('AI_ENABLED', true);
+
+    if (configured !== modelName) {
+      this.logger.warn(`GEMINI_MODEL "${configured}" is deprecated, using ${modelName}`);
+    }
 
     if (!apiKey || apiKey === 'your-gemini-api-key-here' || apiKey.trim() === '') {
       this.logger.error('GEMINI_API_KEY not configured or invalid. AI features will be disabled.');
@@ -67,7 +77,7 @@ export class GeminiAIProvider {
       return {
         text,
         tokensUsed: estimatedTokens,
-        model: this.configService.get<string>('GEMINI_MODEL', 'gemini-2.5-flash'),
+        model: this.getModelName(),
       };
     } catch (error) {
       this.logger.error('Gemini API error', error);
@@ -346,6 +356,6 @@ Indicators ที่มี:
    * ดึงชื่อ model ที่ใช้
    */
   getModelName(): string {
-    return this.configService.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
+    return this.effectiveModelName ?? DEFAULT_GEMINI_MODEL;
   }
 }
