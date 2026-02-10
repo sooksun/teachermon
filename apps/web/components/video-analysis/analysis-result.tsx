@@ -2,7 +2,44 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { apiClient } from '@/lib/api-client';
-import { INDICATOR_CODE_TO_NAME } from '@teachermon/shared';
+
+/** ชื่อตัวชี้วัด (ในไฟล์เพื่อไม่พึ่งพา @teachermon/shared ที่อาจไม่ถูก bundle ใน production) ตาม doc_ref6 + ตัวเก่า WP/ET */
+const INDICATOR_NAME_MAP: Record<string, string> = {
+  WP_1: 'การออกแบบการจัดการเรียนรู้',
+  WP_2: 'การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ',
+  WP_3: 'การวัดและประเมินผล',
+  ET_1: 'ความเป็นครู',
+  ET_2: 'การจัดการชั้นเรียน',
+  ET_3: 'ภาวะผู้นำทางวิชาการ',
+  ET_4: 'การพัฒนาตนเอง',
+  'PRO_1.1': 'การวิเคราะห์หลักสูตร',
+  'PRO_1.2': 'การออกแบบการจัดการเรียนรู้',
+  'PRO_1.3': 'การจัดกิจกรรมการเรียนรู้',
+  'PRO_1.4': 'การเลือกและใช้สื่อ เทคโนโลยี',
+  'PRO_1.5': 'การวัดและประเมินผล',
+  'PRO_1.6': 'การจัดบรรยากาศ',
+  'PRO_1.7': 'การใช้เทคโนโลยีดิจิทัล',
+  'PRO_2.1': 'การจัดทำข้อมูลสารสนเทศ',
+  'PRO_2.2': 'ระบบดูแลช่วยเหลือผู้เรียน',
+  'PRO_2.3': 'กฎหมายและระเบียบปฏิบัติ',
+  SOC_1: 'การเรียนรู้จากกัลยาณมิตร',
+  SOC_2: 'การเรียนรู้เป็นเครือข่าย (PLC)',
+  'PER_1.1': 'มีวินัยในตนเอง',
+  'PER_1.2': 'ตรงต่อเวลา',
+  'PER_1.3': 'อุทิศเวลาให้แก่ทางราชการและผู้เรียน',
+  'PER_1.4': 'เอาใจใส่ช่วยเหลือผู้เรียน',
+  'PER_1.5': 'รักษาความสามัคคี',
+  'PER_1.6': 'ช่วยเหลือ/ร่วมมือแก่ส่วนรวม',
+  'PER_1.7': 'มีส่วนร่วมอนุรักษ์วัฒนธรรมไทยและสิ่งแวดล้อม',
+  'PER_1.8': 'ดำรงชีวิตตามหลักปรัชญาของเศรษฐกิจพอเพียง',
+  'PER_1.9': 'ละเว้นอบายมุขและสิ่งเสพติด',
+  'PER_1.10': 'ประพฤติตนเป็นแบบอย่างที่ดี',
+  'PER_1.11': 'รักษาชื่อเสียง ปกป้องศักดิ์ศรีวิชาชีพ',
+  'PER_2.1': 'ภาษาไทยและอังกฤษ',
+  'PER_2.2': 'เทคโนโลยีดิจิทัล',
+  'PER_2.3': 'การเงิน',
+  'PER_2.4': 'สุขภาพ',
+};
 
 interface AnalysisResultProps {
   job: {
@@ -456,7 +493,7 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
                       <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs font-bold">
                         {code}
                       </span>
-                      <span className="text-sm font-medium text-gray-700">{INDICATOR_CODE_TO_NAME[code] ?? code}</span>
+                      <span className="text-sm font-medium text-gray-700">{INDICATOR_NAME_MAP[code] ?? code}</span>
                     </div>
                     <p className="text-sm text-gray-600">{String(desc)}</p>
                   </div>
