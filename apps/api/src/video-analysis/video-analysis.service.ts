@@ -18,6 +18,7 @@ import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import * as https from 'https';
 import * as http from 'http';
+import { AI_ANALYSIS_INDICATOR_LIST } from '@teachermon/shared';
 
 const DEFAULT_QUOTA = 2_147_483_648; // 2 GB ต่อครู
 
@@ -1055,19 +1056,20 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
   "teachingTechniques": ["เทคนิคที่ใช้ 1", "เทคนิคที่ใช้ 2", ...],
   "studentEngagement": "ระดับการมีส่วนร่วมของผู้เรียน (สูง/ปานกลาง/ต่ำ) + คำอธิบาย",
   "indicators": {
-    "WP_1": "การออกแบบการจัดการเรียนรู้ – ระดับ (ดีมาก/ดี/พอใช้/ต้องปรับปรุง) + เหตุผล",
-    "WP_2": "การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ – ระดับ + เหตุผล",
-    "WP_3": "การวัดและประเมินผล – ระดับ + เหตุผล",
-    "ET_1": "ความเป็นครู – ระดับ + เหตุผล",
-    "ET_2": "การจัดการชั้นเรียน – ระดับ + เหตุผล",
-    "ET_3": "ภาวะผู้นำทางวิชาการ – ระดับ + เหตุผล",
-    "ET_4": "การพัฒนาตนเอง – ระดับ + เหตุผล"
+${this.buildIndicatorsJsonLines()}
   },
   "overallScore": "คะแนนรวม 1-5",
   "advice": "คำแนะนำเชิงปฏิบัติสำหรับครูในการพัฒนา (3-5 ประโยค)"
 }
 
 สำคัญ: ตอบเป็น JSON เท่านั้น ภาษาไทย`;
+  }
+
+  /** สร้างบรรทัด indicators ตามตัวชี้วัดใหม่ doc_ref6 (PRO_1.1, PRO_2.1, SOC_1, PER_1.1 ฯลฯ) */
+  private buildIndicatorsJsonLines(): string {
+    return AI_ANALYSIS_INDICATOR_LIST.map(
+      ({ code, name }) => `    "${code}": "${name} – ระดับ (1-5 หรือ ดีมาก/ดี/พอใช้/ต้องปรับปรุง) + เหตุผล"`,
+    ).join(',\n');
   }
 
   private buildImageAnalysisPrompt(description?: string): string {
@@ -1086,13 +1088,7 @@ export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {
   "teachingTechniques": ["เทคนิคที่เกี่ยวข้อง 1", ...],
   "studentEngagement": "การมีส่วนร่วมของผู้เรียนที่เห็นจากภาพ",
   "indicators": {
-    "WP_1": "การออกแบบการจัดการเรียนรู้ – ระดับ + เหตุผล",
-    "WP_2": "การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ – ระดับ + เหตุผล",
-    "WP_3": "การวัดและประเมินผล – ระดับ + เหตุผล",
-    "ET_1": "ความเป็นครู – ระดับ + เหตุผล",
-    "ET_2": "การจัดการชั้นเรียน – ระดับ + เหตุผล",
-    "ET_3": "ภาวะผู้นำทางวิชาการ – ระดับ + เหตุผล",
-    "ET_4": "การพัฒนาตนเอง – ระดับ + เหตุผล"
+${this.buildIndicatorsJsonLines()}
   },
   "overallScore": "คะแนนรวม 1-5",
   "advice": "คำแนะนำสำหรับครูในการพัฒนา (3-5 ประโยค)"
@@ -1201,13 +1197,7 @@ ${transcriptText.substring(0, 15000)}`;
   "teachingTechniques": ["เทคนิคที่เกี่ยวข้อง 1", ...],
   "studentEngagement": "การมีส่วนร่วมของผู้เรียนที่เห็นจากภาพ",
   "indicators": {
-    "WP_1": "การออกแบบการจัดการเรียนรู้ – ระดับ + เหตุผล",
-    "WP_2": "การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ – ระดับ + เหตุผล",
-    "WP_3": "การวัดและประเมินผล – ระดับ + เหตุผล",
-    "ET_1": "ความเป็นครู – ระดับ + เหตุผล",
-    "ET_2": "การจัดการชั้นเรียน – ระดับ + เหตุผล",
-    "ET_3": "ภาวะผู้นำทางวิชาการ – ระดับ + เหตุผล",
-    "ET_4": "การพัฒนาตนเอง – ระดับ + เหตุผล"
+${this.buildIndicatorsJsonLines()}
   },
   "overallScore": "คะแนนรวม 1-5",
   "advice": "คำแนะนำสำหรับครูในการพัฒนา (3-5 ประโยค)"

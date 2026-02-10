@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { getIndicatorDisplayName } from '@teachermon/shared';
 
 interface AnalysisResultProps {
   job: {
@@ -56,6 +57,8 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
   const [loadingVideo, setLoadingVideo] = useState(false);
   const [rawVideoFilename, setRawVideoFilename] = useState<string | null>(null);
   const [videoLoadError, setVideoLoadError] = useState<string | null>(null);
+  const [imageSlideOpen, setImageSlideOpen] = useState(false);
+  const [imageSlideIndex, setImageSlideIndex] = useState(0);
   const objectUrlsRef = useRef<string[]>([]);
   const report = job.analysisReport || {};
   const sourceType = job.sourceType || 'UPLOAD';
@@ -137,6 +140,18 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
       if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
     };
   }, []);
+
+  // คีย์บอร์ดสำหรับ image slide: Escape ปิด, ลูกศรซ้าย/ขวา เลื่อนรูป
+  useEffect(() => {
+    if (!imageSlideOpen || rawImageUrls.length === 0) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setImageSlideOpen(false);
+      if (e.key === 'ArrowLeft') setImageSlideIndex((prev) => (prev <= 0 ? rawImageUrls.length - 1 : prev - 1));
+      if (e.key === 'ArrowRight') setImageSlideIndex((prev) => (prev >= rawImageUrls.length - 1 ? 0 : prev + 1));
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [imageSlideOpen, rawImageUrls.length]);
 
   /** โหลดวิดีโอจาก API แล้วเปิด player (ใช้ timeout นาน เพราะวิดีโออาจใหญ่) */
   const handlePlayVideo = async () => {
@@ -284,19 +299,28 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
             )}
             {!videoId && !coverObjectUrl && rawImageUrls.length > 0 && (
               <div className="rounded-lg overflow-hidden">
+                <p className="text-xs text-gray-500 mb-2">
+                  รูปภาพที่วิเคราะห์ ({rawImageUrls.length} รูป) — คลิกเพื่อเลื่อนดู
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {rawImageUrls.map((src, i) => (
-                    <img
+                    <button
                       key={i}
-                      src={src}
-                      alt={`รูปที่ ${i + 1}`}
-                      className="h-24 w-auto max-w-[120px] object-cover rounded border border-gray-200"
-                    />
+                      type="button"
+                      onClick={() => {
+                        setImageSlideIndex(i);
+                        setImageSlideOpen(true);
+                      }}
+                      className="rounded border border-gray-200 overflow-hidden hover:ring-2 ring-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <img
+                        src={src}
+                        alt={`รูปที่ ${i + 1}`}
+                        className="h-24 w-auto max-w-[120px] object-cover"
+                      />
+                    </button>
                   ))}
                 </div>
-                <p className="text-xs text-gray-500 py-1.5 px-2">
-                  รูปภาพที่วิเคราะห์ ({rawImageUrls.length} รูป)
-                </p>
               </div>
             )}
           </div>
@@ -424,7 +448,7 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
 
           {activeTab === 'indicators' && (
             <div className="space-y-3">
-              <p className="text-sm text-gray-500 mb-3">ผลการประเมินตามตัวชี้วัดสมรรถนะครู</p>
+              <p className="text-sm text-gray-500 mb-3">ผลการประเมินตามตัวชี้วัดสมรรถนะครู (ตาม doc_ref6)</p>
               {job.evaluationResult && typeof job.evaluationResult === 'object' ? (
                 Object.entries(job.evaluationResult).map(([code, desc]) => (
                   <div key={code} className="p-3 bg-gray-50 rounded-lg">
@@ -432,6 +456,7 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
                       <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs font-bold">
                         {code}
                       </span>
+                      <span className="text-sm font-medium text-gray-700">{getIndicatorDisplayName(code)}</span>
                     </div>
                     <p className="text-sm text-gray-600">{String(desc)}</p>
                   </div>
@@ -517,6 +542,57 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
           </button>
         </div>
       </div>
+
+      {/* Image slide overlay — เลื่อนดูรูปภาพที่วิเคราะห์ */}
+      {imageSlideOpen && rawImageUrls.length > 0 && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setImageSlideOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setImageSlideOpen(false)}
+            className="absolute top-4 right-4 p-2 text-white/80 hover:text-white rounded-full hover:bg-white/10"
+            aria-label="ปิด"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <div className="flex items-center gap-2 max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setImageSlideIndex((prev) => (prev <= 0 ? rawImageUrls.length - 1 : prev - 1))}
+              className="p-3 text-white/90 hover:text-white rounded-full hover:bg-white/10 disabled:opacity-50 shrink-0"
+              aria-label="รูปก่อนหน้า"
+            >
+              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <div className="flex flex-col items-center gap-2">
+              <img
+                src={rawImageUrls[imageSlideIndex]}
+                alt={`รูปที่ ${imageSlideIndex + 1}`}
+                className="max-w-full max-h-[80vh] object-contain rounded"
+              />
+              <p className="text-white/90 text-sm">
+                {imageSlideIndex + 1} / {rawImageUrls.length}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setImageSlideIndex((prev) => (prev >= rawImageUrls.length - 1 ? 0 : prev + 1))}
+              className="p-3 text-white/90 hover:text-white rounded-full hover:bg-white/10 disabled:opacity-50 shrink-0"
+              aria-label="รูปถัดไป"
+            >
+              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -151,6 +151,43 @@ export const INDICATOR_REPORT_STRUCTURE: IndicatorReportStructure[] = [
 ];
 
 // =============================================
+// รายการตัวชี้วัดแบบแบน สำหรับ AI วิเคราะห์และแสดงผล (ตาม doc_ref6)
+// =============================================
+const _flatItems: { code: string; name: string }[] = [];
+for (const s of INDICATOR_REPORT_STRUCTURE) {
+  for (const sec of s.sections) {
+    for (const item of sec.items) {
+      _flatItems.push({ code: item.code, name: item.name });
+    }
+  }
+}
+
+export const INDICATOR_CODE_TO_NAME: Record<string, string> = {};
+_flatItems.forEach(({ code, name }) => {
+  INDICATOR_CODE_TO_NAME[code] = name;
+});
+
+/** ตัวชี้วัดเก่า (WP_/ET_) ที่เคยใช้ใน AI วิเคราะห์ — map เป็นชื่อตาม doc_ref6 */
+const LEGACY_INDICATOR_NAMES: Record<string, string> = {
+  WP_1: 'การออกแบบการจัดการเรียนรู้',
+  WP_2: 'การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ',
+  WP_3: 'การวัดและประเมินผล',
+  ET_1: 'ความเป็นครู',
+  ET_2: 'การจัดการชั้นเรียน',
+  ET_3: 'ภาวะผู้นำทางวิชาการ',
+  ET_4: 'การพัฒนาตนเอง',
+};
+Object.assign(INDICATOR_CODE_TO_NAME, LEGACY_INDICATOR_NAMES);
+
+/** รายการตัวชี้วัดสำหรับให้ AI คืนผล (code + name) ตาม doc_ref6 */
+export const AI_ANALYSIS_INDICATOR_LIST: { code: string; name: string }[] = _flatItems;
+
+/** ชื่อตัวชี้วัดจาก code (ถ้าไม่มีคืน code) */
+export function getIndicatorDisplayName(code: string): string {
+  return INDICATOR_CODE_TO_NAME[code] ?? code;
+}
+
+// =============================================
 // เกณฑ์การผ่านการประเมิน
 // =============================================
 export interface PassCriteria {

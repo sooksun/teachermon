@@ -5,6 +5,7 @@ import { GoogleAIFileManager, FileState } from '@google/generative-ai/server';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
+import { AI_ANALYSIS_INDICATOR_LIST } from '@teachermon/shared';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const DEPRECATED_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-lite', 'gemini-2.0-flash-001'];
@@ -310,20 +311,14 @@ ${data.suggestions || 'ไม่ได้ระบุ'}
 
 ชื่อไฟล์: "${filename}"
 
-Indicators ที่มี:
-- WP_1: การออกแบบการจัดการเรียนรู้ (แผนการสอน, สื่อการสอน, การออกแบบกิจกรรม)
-- WP_2: การจัดการเรียนรู้ที่เน้นผู้เรียนเป็นสำคัญ (ภาพกิจกรรม, วิดีโอการสอน, ผลงานนักเรียน)
-- WP_3: การวัดและประเมินผล (แบบทดสอบ, ผลการประเมิน, การให้ feedback)
-- ET_1: ความเป็นครู (บันทึกสะท้อนตนเอง, ใบประกาศ, การเข้าร่วมชุมชน)
-- ET_2: การจัดการชั้นเรียน (ภาพบรรยากาศ, แผนการจัดการพฤติกรรม, การดูแลนักเรียน)
-- ET_3: ภาวะผู้นำทางวิชาการ (การเป็นวิทยากร, การนำเสนอใน PLC, งานวิจัย)
-- ET_4: การพัฒนาตนเอง (ใบประกาศการอบรม, แผนพัฒนาตนเอง, การเรียนรู้)
+ตัวชี้วัด (ตาม doc_ref6) ที่ใช้ได้:
+${AI_ANALYSIS_INDICATOR_LIST.map(({ code, name }) => `- ${code}: ${name}`).join('\n')}
 
 ให้สร้างการวิเคราะห์ในรูปแบบ JSON:
 {
   "summary": "สรุปสั้นๆ 1 ประโยค",
   "keywords": ["คำสำคัญ 1", "คำสำคัญ 2", ...],
-  "suggestedIndicators": ["WP_1", "WP_2", ...]
+  "suggestedIndicators": ["PRO_1.1", "PRO_1.2", ...]
 }
 
 ตอบเฉพาะ JSON เท่านั้น:`;
