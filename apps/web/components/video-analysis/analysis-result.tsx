@@ -51,6 +51,10 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [coverObjectUrl, setCoverObjectUrl] = useState<string | null>(null);
   const [rawImageUrls, setRawImageUrls] = useState<string[]>([]);
+  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+  const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
+  const [loadingVideo, setLoadingVideo] = useState(false);
+  const [rawVideoFilename, setRawVideoFilename] = useState<string | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const report = job.analysisReport || {};
   const sourceType = job.sourceType || 'UPLOAD';
@@ -75,6 +79,21 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
         .finally(() => setLoadingTranscript(false));
     }
   }, [activeTab, job.id, transcript, loadingTranscript]);
+
+  // find the raw video filename for UPLOAD/GDRIVE (so we can play it on click)
+  useEffect(() => {
+    if (sourceType === 'UPLOAD' || sourceType === 'GDRIVE') {
+      apiClient
+        .get<{ files: string[] }>(`/video-analysis/jobs/${job.id}/raw-files`)
+        .then((res) => {
+          const videoFile = res.data?.files?.find((f: string) =>
+            /\.(mp4|webm|mov|avi|mkv)$/i.test(f)
+          );
+          if (videoFile) setRawVideoFilename(videoFile);
+        })
+        .catch(() => {});
+    }
+  }, [job.id, sourceType]);
 
   // load thumbnail: cover for UPLOAD/GDRIVE, raw images for IMAGES
   useEffect(() => {
@@ -117,8 +136,32 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
     return () => {
       objectUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
       objectUrlsRef.current = [];
+      if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
     };
   }, []);
+
+  /** โหลดวิดีโอจาก API แล้วเปิด player */
+  const handlePlayVideo = async () => {
+    if (!rawVideoFilename) return;
+    if (videoObjectUrl) {
+      setShowVideoPlayer(true);
+      return;
+    }
+    setLoadingVideo(true);
+    try {
+      const res = await apiClient.get(
+        `/video-analysis/jobs/${job.id}/raw/${encodeURIComponent(rawVideoFilename)}`,
+        { responseType: 'blob' }
+      );
+      const url = URL.createObjectURL(res.data);
+      setVideoObjectUrl(url);
+      setShowVideoPlayer(true);
+    } catch {
+      // fallback: do nothing
+    } finally {
+      setLoadingVideo(false);
+    }
+  };
 
   const defaultLabel = '\u0e0a\u0e34\u0e49\u0e19\u0e07\u0e32\u0e19'; // ชิ้นงาน
   const subtitle = job.originalFilename || (videoId ? `YouTube: ${videoId}` : defaultLabel);
@@ -154,13 +197,49 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
                 <p className="text-xs text-gray-500 py-1.5 px-2">YouTube: {videoId}</p>
               </div>
             )}
-            {!videoId && coverObjectUrl && (
-              <div className="rounded-lg overflow-hidden bg-gray-100">
+            {!videoId && (sourceType === 'UPLOAD' || sourceType === 'GDRIVE') && (showVideoPlayer && videoObjectUrl) && (
+              <div className="rounded-lg overflow-hidden bg-black w-full max-w-lg mx-auto">
+                <video
+                  src={videoObjectUrl}
+                  controls
+                  autoPlay
+                  className="w-full aspect-video"
+                />
+                <div className="flex items-center justify-between px-2 py-1.5">
+                  <p className="text-xs text-gray-500">{subtitle}</p>
+                  <button
+                    onClick={() => setShowVideoPlayer(false)}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    ซ่อนวิดีโอ
+                  </button>
+                </div>
+              </div>
+            )}
+            {!videoId && (sourceType === 'UPLOAD' || sourceType === 'GDRIVE') && !(showVideoPlayer && videoObjectUrl) && coverObjectUrl && (
+              <div
+                className="rounded-lg overflow-hidden bg-gray-100 cursor-pointer relative group"
+                onClick={handlePlayVideo}
+              >
                 <img
                   src={coverObjectUrl}
                   alt="ภาพตัวอย่างชิ้นงาน"
                   className="w-full max-h-56 object-contain"
                 />
+                {/* Play button overlay */}
+                {rawVideoFilename && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
+                    {loadingVideo ? (
+                      <div className="animate-spin rounded-full h-12 w-12 border-4 border-white border-t-transparent" />
+                    ) : (
+                      <div className="w-14 h-14 bg-white/90 rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                        <svg className="w-7 h-7 text-gray-800 ml-1" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <p className="text-xs text-gray-500 py-1.5 px-2">{subtitle}</p>
               </div>
             )}
