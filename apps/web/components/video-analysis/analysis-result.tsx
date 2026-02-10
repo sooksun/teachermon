@@ -55,6 +55,7 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
   const [loadingVideo, setLoadingVideo] = useState(false);
   const [rawVideoFilename, setRawVideoFilename] = useState<string | null>(null);
+  const [videoLoadError, setVideoLoadError] = useState<string | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const report = job.analysisReport || {};
   const sourceType = job.sourceType || 'UPLOAD';
@@ -137,9 +138,10 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
     };
   }, []);
 
-  /** โหลดวิดีโอจาก API แล้วเปิด player */
+  /** โหลดวิดีโอจาก API แล้วเปิด player (ใช้ timeout นาน เพราะวิดีโออาจใหญ่) */
   const handlePlayVideo = async () => {
     if (!rawVideoFilename) return;
+    setVideoLoadError(null);
     if (videoObjectUrl) {
       setShowVideoPlayer(true);
       return;
@@ -148,13 +150,19 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
     try {
       const res = await apiClient.get(
         `/video-analysis/jobs/${job.id}/raw/${encodeURIComponent(rawVideoFilename)}`,
-        { responseType: 'blob' }
+        { responseType: 'blob', timeout: 120000 }
       );
+      const contentType = (res.headers['content-type'] || '').toLowerCase();
+      if (!contentType.startsWith('video/') && !contentType.includes('octet-stream')) {
+        setVideoLoadError('โหลดวิดีโอไม่สำเร็จ (รูปแบบไฟล์ไม่ถูกต้อง)');
+        setLoadingVideo(false);
+        return;
+      }
       const url = URL.createObjectURL(res.data);
       setVideoObjectUrl(url);
       setShowVideoPlayer(true);
     } catch {
-      // fallback: do nothing
+      setVideoLoadError('โหลดวิดีโอไม่สำเร็จ กรุณาลองใหม่');
     } finally {
       setLoadingVideo(false);
     }
@@ -200,7 +208,16 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
                   src={videoObjectUrl}
                   controls
                   autoPlay
+                  playsInline
                   className="w-full aspect-video"
+                  onError={() => {
+                    setVideoLoadError('เล่นวิดีโอไม่ได้');
+                    setShowVideoPlayer(false);
+                    if (videoObjectUrl) {
+                      URL.revokeObjectURL(videoObjectUrl);
+                      setVideoObjectUrl(null);
+                    }
+                  }}
                 />
                 <div className="flex items-center justify-between px-2 py-1.5">
                   <p className="text-xs text-gray-500">{subtitle}</p>
@@ -225,8 +242,10 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
                 />
                 {/* Play button overlay */}
                 {rawVideoFilename && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
-                    {loadingVideo ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors gap-2">
+                    {videoLoadError ? (
+                      <p className="text-white text-sm px-4 text-center">{videoLoadError}</p>
+                    ) : loadingVideo ? (
                       <div className="animate-spin rounded-full h-12 w-12 border-4 border-white border-t-transparent" />
                     ) : (
                       <div className="w-14 h-14 bg-white/90 rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
