@@ -187,8 +187,8 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
           </button>
         </div>
 
-        {/* Thumbnail: Video (YouTube embed) or Cover / Image thumbnails */}
-        {(videoId || coverObjectUrl || rawImageUrls.length > 0) && (
+        {/* Thumbnail: Video (YouTube embed) or Cover / Image thumbnails หรือปุ่มเล่นวิดีโอ (UPLOAD/GDRIVE) */}
+        {(videoId || coverObjectUrl || rawImageUrls.length > 0 || ((sourceType === 'UPLOAD' || sourceType === 'GDRIVE') && rawVideoFilename)) && (
           <div className="px-5 pb-4 border-b">
             {videoId && (
               <div className="rounded-lg overflow-hidden bg-black w-1/2 min-w-[280px] mx-auto">
@@ -257,6 +257,29 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
                   </div>
                 )}
                 <p className="text-xs text-gray-500 py-1.5 px-2">{subtitle}</p>
+              </div>
+            )}
+            {/* UPLOAD/GDRIVE ไม่มี cover (เช่น โหมดเฉพาะเสียง) แต่มีไฟล์วิดีโอ — แสดงปุ่มเล่น */}
+            {!videoId && (sourceType === 'UPLOAD' || sourceType === 'GDRIVE') && !(showVideoPlayer && videoObjectUrl) && !coverObjectUrl && rawVideoFilename && (
+              <div
+                className="rounded-lg overflow-hidden bg-gray-200 cursor-pointer flex flex-col items-center justify-center min-h-[200px] gap-3 py-8 group hover:bg-gray-300 transition-colors"
+                onClick={handlePlayVideo}
+              >
+                {videoLoadError ? (
+                  <p className="text-gray-600 text-sm px-4 text-center">{videoLoadError}</p>
+                ) : loadingVideo ? (
+                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-500 border-t-transparent" />
+                ) : (
+                  <>
+                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-8 h-8 text-gray-700 ml-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                    </svg>
+                  </div>
+                    <p className="text-gray-600 text-sm font-medium">คลิกเพื่อเล่นวิดีโอ</p>
+                  </>
+                )}
+                <p className="text-xs text-gray-500">{subtitle}</p>
               </div>
             )}
             {!videoId && !coverObjectUrl && rawImageUrls.length > 0 && (
