@@ -19,7 +19,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as https from 'https';
 import * as http from 'http';
 
-const DEFAULT_QUOTA = 1_073_741_824; // 1 GB
+const DEFAULT_QUOTA = 2_147_483_648; // 2 GB ต่อครู
 
 @Injectable()
 export class VideoAnalysisService implements OnModuleInit, OnModuleDestroy {

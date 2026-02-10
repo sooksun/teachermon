@@ -1057,7 +1057,7 @@ model UserMediaQuota {
   id                  String    @id @default(uuid())
   userId              String    @unique @map("user_id")
 
-  limitBytes          BigInt    @default(1073741824) @map("limit_bytes")  // 1 GB default
+  limitBytes          BigInt    @default(2147483648) @map("limit_bytes")  // 2 GB ต่อครู
   usageBytes          BigInt    @default(0) @map("usage_bytes")
 
   createdAt           DateTime  @default(now()) @map("created_at")
