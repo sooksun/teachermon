@@ -1363,6 +1363,18 @@ ${transcriptText.substring(0, 15000)}`;
     }
   }
 
+  /** ชื่อไฟล์วิดีโอใน raw (สำหรับ UPLOAD/GDRIVE) เพื่อให้ frontend เล่นได้ */
+  async getRawVideoFilename(jobId: string): Promise<string | null> {
+    const rawDir = path.join(this.dataRoot, jobId, 'raw');
+    try {
+      const files = await fs.readdir(rawDir);
+      const video = files.find((f) => /\.(mp4|webm|mov|avi|mkv)$/i.test(f));
+      return video ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   // ───────── helpers ─────────
 
   private formatJob(job: any) {

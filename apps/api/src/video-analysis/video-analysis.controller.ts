@@ -12,6 +12,7 @@ import {
   UploadedFiles,
   Res,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
@@ -159,6 +160,16 @@ export class VideoAnalysisController {
     await this.service.getJob(jobId, req.user.sub);
     const files = await this.service.listRawFiles(jobId);
     return { files };
+  }
+
+  @Get('jobs/:id/raw-video-filename')
+  async getRawVideoFilename(@Param('id') jobId: string, @Request() req: any) {
+    await this.service.getJob(jobId, req.user.sub);
+    const filename = await this.service.getRawVideoFilename(jobId);
+    if (!filename) {
+      throw new NotFoundException('No video file in this job');
+    }
+    return { filename };
   }
 
   @Get('jobs/:id/raw/:filename')

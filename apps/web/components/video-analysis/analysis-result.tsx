@@ -80,16 +80,13 @@ export function AnalysisResult({ job, onClose }: AnalysisResultProps) {
     }
   }, [activeTab, job.id, transcript, loadingTranscript]);
 
-  // find the raw video filename for UPLOAD/GDRIVE (so we can play it on click)
+  // ชื่อไฟล์วิดีโอใน raw สำหรับ UPLOAD/GDRIVE (API คืนเฉพาะวิดีโอจาก endpoint นี้)
   useEffect(() => {
     if (sourceType === 'UPLOAD' || sourceType === 'GDRIVE') {
       apiClient
-        .get<{ files: string[] }>(`/video-analysis/jobs/${job.id}/raw-files`)
+        .get<{ filename: string }>(`/video-analysis/jobs/${job.id}/raw-video-filename`)
         .then((res) => {
-          const videoFile = res.data?.files?.find((f: string) =>
-            /\.(mp4|webm|mov|avi|mkv)$/i.test(f)
-          );
-          if (videoFile) setRawVideoFilename(videoFile);
+          if (res.data?.filename) setRawVideoFilename(res.data.filename);
         })
         .catch(() => {});
     }
